@@ -55,11 +55,17 @@ class DIContainer:
         if cls._engine is not None:
             return  # already initialized
 
-        url = database_url or os.getenv("DATABASE_URL")
-        if not url:
-            raise ValueError("DATABASE_URL must be provided or set in environment variables")
+        url = database_url or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///./helios.db"
 
-        cls._engine = create_async_engine(url, echo=False, pool_pre_ping=True)
+        # SQLite async engine configuration
+        is_sqlite = url.startswith("sqlite")
+        connect_args = {"check_same_thread": False} if is_sqlite else {}
+        engine_kwargs = {"echo": False}
+        if not is_sqlite:
+            engine_kwargs["pool_pre_ping"] = True
+
+        cls._engine = create_async_engine(url, connect_args=connect_args, **engine_kwargs)
+
         cls._session_maker = async_sessionmaker(
             bind=cls._engine,
             class_=AsyncSession,
