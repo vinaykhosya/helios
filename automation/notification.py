@@ -36,22 +36,22 @@ class TelegramNotifier:
 
     def format_approval_message(self, job: Job, ranking: RankingResult, pause_reason: Optional[str] = None) -> str:
         """
-        Formats human-in-the-loop approval message.
+        Formats human-in-the-loop approval message in HTML.
         """
         matched_str = ", ".join([d.name for d in ranking.dimensions if d.matched]) or "None"
         missing_str = ", ".join(ranking.missing_skills[:3]) if ranking.missing_skills else "None"
-        reason_header = f"\n⚠️ **Pause Reason**: {pause_reason}" if pause_reason else ""
+        reason_header = f"\n⚠️ <b>Pause Reason</b>: {pause_reason}" if pause_reason else ""
 
         return (
-            f"🔔 **Helios — Application Approval Required**\n"
+            f"🔔 <b>Helios — Application Approval Required</b>\n"
             f"{reason_header}\n"
-            f"📋 **Job**: {job.title}\n"
-            f"🏢 **Company**: {job.company}\n"
-            f"📍 **Location**: {job.location or 'Not specified'}\n"
-            f"🎯 **Match Score**: {int(ranking.overall_score * 100)}% (Confidence: {int(ranking.confidence * 100)}%)\n\n"
-            f"✅ **Matched Criteria**: {matched_str}\n"
-            f"❌ **Missing Keywords**: {missing_str}\n\n"
-            f"Reply /approve or /skip"
+            f"📋 <b>Job</b>: {job.title}\n"
+            f"🏢 <b>Company</b>: {job.company}\n"
+            f"📍 <b>Location</b>: {job.location or 'Not specified'}\n"
+            f"🎯 <b>Match Score</b>: {int(ranking.overall_score * 100)}% (Confidence: {int(ranking.confidence * 100)}%)\n\n"
+            f"✅ <b>Matched Criteria</b>: {matched_str}\n"
+            f"❌ <b>Missing Keywords</b>: {missing_str}\n\n"
+            f"<i>Reply /approve or /skip to confirm application submit</i>"
         )
 
     async def send_approval_request(
@@ -74,22 +74,23 @@ class TelegramNotifier:
 
         msg = self.format_approval_message(job, ranking, pause_reason)
 
-        # If live bot token & chat id present, attempt HTTP call to Telegram Bot API
         if self.bot_token and self.chat_id:
             try:
                 import httpx
                 async with httpx.AsyncClient() as client:
-                    await client.post(
+                    resp = await client.post(
                         f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
                         json={
                             "chat_id": self.chat_id,
                             "text": msg,
-                            "parse_mode": "Markdown",
+                            "parse_mode": "HTML",
                         },
-                        timeout=5.0,
+                        timeout=10.0,
                     )
+                    if resp.status_code != 200:
+                        print(f"Telegram API warning response: {resp.text}")
             except Exception as e:
-                print(f"TelegramNotifier send warning: {e}")
+                print(f"TelegramNotifier error: {e}")
 
         return pending
 
