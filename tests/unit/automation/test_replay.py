@@ -4,6 +4,7 @@ tests/unit/automation/test_replay.py
 Unit tests for ReplayEngine snapshot loading and re-execution.
 """
 import pytest
+from unittest.mock import AsyncMock
 from automation.recovery import RecoverySnapshot
 from automation.replay import ReplayEngine
 from core.models.candidate_profile import CandidateProfile
@@ -45,7 +46,10 @@ async def test_replay_engine(tmp_path):
         company="Acme",
     )
 
-    engine = ReplayEngine()
+    mock_filler = AsyncMock()
+    mock_filler.fill.return_value = True
+
+    engine = ReplayEngine(greenhouse_filler=mock_filler)
     result = await engine.replay_from_snapshot(snapshot, job, candidate, resume_path=str(res_file))
     assert result.snapshot_id == "snap_1"
     assert result.success is True
