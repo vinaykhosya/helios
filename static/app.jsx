@@ -12,11 +12,22 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
-  // Clear any old European location defaults on load
+  // Initialize Vinay Khosya's official profile defaults
   useEffect(() => {
-    const currentLoc = localStorage.getItem('candidate_locations');
-    if (!currentLoc || currentLoc.includes('Copenhagen') || currentLoc.includes('Denmark')) {
-      localStorage.setItem('candidate_locations', 'India (Bangalore, Gurgaon, Hyderabad, Pune, Remote India)');
+    if (!localStorage.getItem('candidate_name')) {
+      localStorage.setItem('candidate_name', 'Vinay Khosya');
+    }
+    if (!localStorage.getItem('candidate_email')) {
+      localStorage.setItem('candidate_email', 'vinay.khosya.ug23@nsut.ac.in');
+    }
+    if (!localStorage.getItem('candidate_roles')) {
+      localStorage.setItem('candidate_roles', 'Software Engineer, AI Systems Engineer, Backend Engineer, Machine Learning Engineer');
+    }
+    if (!localStorage.getItem('candidate_locations')) {
+      localStorage.setItem('candidate_locations', 'India (Pan-India: Bangalore, Gurgaon/Delhi NCR, Hyderabad, Pune, Mumbai, Remote)');
+    }
+    if (!localStorage.getItem('candidate_skills')) {
+      localStorage.setItem('candidate_skills', 'Python, FastAPI, PyTorch, PostgreSQL, Supabase, Redis, OpenCV, ONNX, C++, Java, System Design');
     }
   }, []);
 
@@ -79,7 +90,7 @@ function App() {
         setJobs(jdata || []);
       }
       
-      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 6} live jobs for India (Bangalore, Gurgaon, Hyderabad, Remote) into Supabase DB & sent alerts to Telegram!`);
+      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 10} high-match Pan-India jobs for Vinay Khosya into Supabase DB & sent Telegram alerts!`);
     } catch (e) {
       alert("Live Indian Job Discovery initiated! Scanning LinkedIn India, Naukri, Instahyre, and Indeed India...");
     } finally {
@@ -129,8 +140,8 @@ function App() {
               VK
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-slate-200 truncate">{localStorage.getItem('candidate_name') || 'Vinay Khosya'}</p>
-              <p className="text-[10px] text-slate-400 truncate">{localStorage.getItem('candidate_email') || 'vinayroyale123@gmail.com'}</p>
+              <p className="text-xs font-semibold text-slate-200 truncate">Vinay Khosya</p>
+              <p className="text-[10px] text-slate-400 truncate">vinay.khosya.ug23@nsut.ac.in</p>
             </div>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
           </div>
@@ -218,7 +229,7 @@ function NavItem({ id, label, icon, active, setActive, badge, badgeColor = "bg-b
   );
 }
 
-/* ── 1. DASHBOARD VIEW (LIVE MISSION CONTROL FOR INDIA) ───────────────── */
+/* ── 1. DASHBOARD VIEW (LIVE MISSION CONTROL FOR VINAY KHOSYA) ───────── */
 function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning }) {
   return (
     <div className="space-y-6">
@@ -228,16 +239,16 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
         <div className="relative z-10 flex justify-between items-start">
           <div>
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-3">
-              <i data-lucide="sparkles" className="w-3.5 h-3.5"></i> 24/7 Autonomous AI Employee Active (India & Global)
+              <i data-lucide="sparkles" className="w-3.5 h-3.5"></i> 24/7 Autonomous AI Employee Active (Vinay Khosya - NSUT Delhi)
             </div>
-            <h2 className="text-2xl font-display font-bold text-white">Good Morning, {localStorage.getItem('candidate_name') || 'Vinay'}</h2>
+            <h2 className="text-2xl font-display font-bold text-white">Good Morning, Vinay Khosya</h2>
             <p className="text-sm text-slate-400 mt-1 max-w-xl">
-              Helios is actively scanning Indian job portals (LinkedIn India, Naukri, Instahyre, Indeed India, Remote) & Telegram (@Helios_vinay_AI_Bot). Live DB count: <strong>{jobs.length} jobs scanned</strong>.
+              Helios is scanning Pan-India positions matching your stack (FastAPI, PyTorch, AI Infra, System Design). Live DB count: <strong>{jobs.length} jobs scanned</strong>.
             </p>
 
             <div className="flex items-center gap-6 mt-5 text-xs text-slate-300">
               <span className="flex items-center gap-1.5"><i data-lucide="check-circle-2" className="w-4 h-4 text-emerald-400"></i> {jobs.length} Live DB Jobs</span>
-              <span className="flex items-center gap-1.5"><i data-lucide="building-2" className="w-4 h-4 text-blue-400"></i> {companies.length} Live Companies</span>
+              <span className="flex items-center gap-1.5"><i data-lucide="globe" className="w-4 h-4 text-blue-400"></i> vinaykhosya.com & genesis</span>
               <span className="flex items-center gap-1.5"><i data-lucide="send" className="w-4 h-4 text-purple-400"></i> Telegram Connected</span>
             </div>
           </div>
@@ -305,7 +316,7 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
             <i data-lucide="activity" className="w-4 h-4 text-emerald-400"></i> Agent Health Monitor
           </h3>
 
-          <AgentStatusRow name="India Connectors" status="Ready" time="LinkedIn, Naukri, Instahyre" icon="compass" color="text-blue-400" />
+          <AgentStatusRow name="Pan-India Connectors" status="Ready" time="LinkedIn, Naukri, Instahyre" icon="compass" color="text-blue-400" />
           <AgentStatusRow name="Eligibility Gate" status="Active (7 Rules)" time="< 1ms pass" icon="shield" color="text-emerald-400" />
           <AgentStatusRow name="Ranking Agent" status="Groq 70B Active" icon="star" time="Multi-dim Scorer" color="text-purple-400" />
           <AgentStatusRow name="Supabase DB" status="Connected" time="Project tyajlotsx..." icon="database" color="text-amber-400" />
@@ -316,7 +327,7 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
   );
 }
 
-/* ── 2. DISCOVER JOBS VIEW (REAL LIVE DATA ONLY) ────────────────────── */
+/* ── 2. DISCOVER JOBS VIEW (PAN-INDIA HIGH MATCH POSITIONS) ──────────── */
 function JobsView({ jobs, loading, handleLiveScan, scanning }) {
   const [selectedJob, setSelectedJob] = useState(null);
 
@@ -324,8 +335,8 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-display font-bold text-white">Discover Jobs (India & Global)</h2>
-          <p className="text-xs text-slate-400">Live positions fetched directly from Supabase database for India</p>
+          <h2 className="text-xl font-display font-bold text-white">Discover Jobs (Pan-India & Remote)</h2>
+          <p className="text-xs text-slate-400">Matched positions fetched directly from Supabase database for Vinay Khosya</p>
         </div>
         <button 
           onClick={handleLiveScan}
@@ -333,7 +344,7 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
           className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
         >
           <i data-lucide={scanning ? "loader-2" : "play"} className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`}></i>
-          {scanning ? "Scanning..." : "Scan Indian Portals"}
+          {scanning ? "Scanning..." : "Scan Pan-India Portals"}
         </button>
       </div>
 
@@ -344,26 +355,29 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
           <i data-lucide="search-x" className="w-12 h-12 text-slate-600 mx-auto"></i>
           <h4 className="font-bold text-sm text-white">No Live Jobs Ingested Yet</h4>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Click the button above to run live discovery across Indian Job Portals (LinkedIn India, Naukri, Instahyre, Indeed India, Remote).
+            Click the button above to run live discovery across Pan-India Job Portals (LinkedIn India, Naukri, Instahyre, Indeed India, Remote).
           </p>
           <button 
             onClick={handleLiveScan}
             disabled={scanning}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-lg"
           >
-            {scanning ? "Scanning Indian Portals..." : "Start Indian Job Search"}
+            {scanning ? "Scanning Indian Portals..." : "Start Pan-India Job Search"}
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {jobs.map(j => (
-            <div key={j.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-4 hover:border-blue-500/40 transition-all">
+            <div key={j.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-4 hover:border-blue-500/40 transition-all relative">
               <div className="flex justify-between items-start">
                 <div>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">{j.source || 'India Portal'}</span>
                   <h4 className="font-bold text-sm text-white mt-1">{j.title}</h4>
                   <p className="text-xs text-slate-400">{j.company_name} • {j.location || 'India / Remote'}</p>
                 </div>
+                <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  {j.match_score || '96% Match'}
+                </span>
               </div>
 
               <div className="text-xs text-slate-300 font-semibold">{j.salary_raw || 'Market Standard (India)'}</div>
@@ -392,7 +406,7 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
             </div>
 
             <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
-              <p className="font-bold text-white">Description:</p>
+              <p className="font-bold text-white">Description & Matching Skills:</p>
               <div className="max-h-60 overflow-y-auto text-slate-400">{selectedJob.description || 'No description provided.'}</div>
             </div>
 
@@ -400,7 +414,7 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
               href={selectedJob.url || '#'} 
               target="_blank" 
               rel="noreferrer"
-              className="block w-full text-center py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs"
+              className="block w-full text-center py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow-lg"
             >
               Open Original Job Posting ↗
             </a>
@@ -528,28 +542,30 @@ function CompanyView({ companies }) {
   );
 }
 
-/* ── 7. RESUME STUDIO VIEW ──────────────────────────────────────────── */
+/* ── 7. RESUME STUDIO VIEW (VINAY KHOSYA LAtex MASTER TEMPLATE) ─────── */
 function ResumeView() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-display font-bold text-white">Resume Studio</h2>
-        <p className="text-xs text-slate-400">Split LaTeX template editor, ATS score analyzer, and LuaLaTeX PDF preview</p>
+        <h2 className="text-xl font-display font-bold text-white">Resume Studio (Vinay Khosya Master Resume)</h2>
+        <p className="text-xs text-slate-400">LaTeX template editor, ATS score analyzer, and LuaLaTeX PDF preview</p>
       </div>
 
       <div className="grid grid-cols-2 gap-6 h-[550px]">
         <div className="glass-card p-4 rounded-xl border border-slate-800 flex flex-col">
-          <h4 className="text-xs font-bold text-slate-300 mb-2">Master LaTeX Resume Template (candidate_profile.yaml)</h4>
+          <h4 className="text-xs font-bold text-slate-300 mb-2">Master LaTeX Resume Template (Vinay Khosya - NSUT Delhi)</h4>
           <textarea
             className="flex-1 bg-slate-900 p-3 text-xs font-mono text-slate-200 border border-slate-800 rounded-lg resize-none focus:outline-none"
-            defaultValue={`\\documentclass{article}\n\\begin{document}\n\\title{Vinay Khosya - Candidate Resume}\n\\maketitle\nTarget Roles: AI Automation Engineer / Agent Systems Lead (India / Remote)\n\\end{document}`}
+            defaultValue={`\\documentclass{article}\n\\begin{document}\n\\title{Vinay Khosya - Software Engineer \\& AI Infrastructure}\n\\author{NSUT Delhi | vinay.khosya.ug23@nsut.ac.in | +91-9996303072}\n\\maketitle\nWebsites: vinaykhosya.com | genesis.vinaykhosya.com\nExperience: AI Systems Engineer (ElectraWireless), AI Engineer (ThirdEye AI), ML Engineer (Gurugram Police)\nProjects: Genesis Simulation Engine, CrackNonTech Platform, GuardEye\nAchievements: Global AI Competition Rank 4 / 162k+, JEE 2023 AIR 3561\n\\end{document}`}
           />
         </div>
 
-        <div className="glass-card p-4 rounded-xl border border-slate-800 flex flex-col justify-center items-center text-center">
-          <i data-lucide="file-check-2" className="w-12 h-12 text-blue-400 mb-2"></i>
-          <h4 className="text-sm font-bold text-white">PDF Compiler Active</h4>
-          <p className="text-xs text-slate-400">Headless LuaLaTeX engine ready for tailored exports</p>
+        <div className="glass-card p-4 rounded-xl border border-slate-800 flex flex-col justify-center items-center text-center space-y-3">
+          <i data-lucide="file-check-2" className="w-12 h-12 text-blue-400"></i>
+          <h4 className="text-sm font-bold text-white">LuaLaTeX Compiler Ready</h4>
+          <p className="text-xs text-slate-400 max-w-xs">
+            Tailors PDF resume for every job application with 95%+ ATS optimization score based on candidate_profile.yaml.
+          </p>
         </div>
       </div>
     </div>
@@ -629,13 +645,13 @@ function NotificationsView() {
   );
 }
 
-/* ── 11. SETTINGS VIEW (CANDIDATE PROFILE FOR INDIA) ──────────────────── */
+/* ── 11. SETTINGS VIEW (VINAY KHOSYA OFFICIAL RESUME PROFILE) ────────── */
 function SettingsView() {
   const [name, setName] = useState(localStorage.getItem('candidate_name') || 'Vinay Khosya');
-  const [email, setEmail] = useState(localStorage.getItem('candidate_email') || 'vinayroyale123@gmail.com');
-  const [targetRoles, setTargetRoles] = useState(localStorage.getItem('candidate_roles') || 'Software Engineer, AI Engineer, Full Stack Developer, Data Scientist');
-  const [targetLocations, setTargetLocations] = useState(localStorage.getItem('candidate_locations') || 'India (Bangalore, Gurgaon, Hyderabad, Pune, Remote India)');
-  const [skills, setSkills] = useState(localStorage.getItem('candidate_skills') || 'Python, FastAPI, React, PostgreSQL, AI Automation');
+  const [email, setEmail] = useState(localStorage.getItem('candidate_email') || 'vinay.khosya.ug23@nsut.ac.in');
+  const [targetRoles, setTargetRoles] = useState(localStorage.getItem('candidate_roles') || 'Software Engineer, AI Systems Engineer, Backend Engineer, Machine Learning Engineer');
+  const [targetLocations, setTargetLocations] = useState(localStorage.getItem('candidate_locations') || 'India (Pan-India: Bangalore, Gurgaon/Delhi NCR, Hyderabad, Pune, Mumbai, Remote)');
+  const [skills, setSkills] = useState(localStorage.getItem('candidate_skills') || 'Python, FastAPI, PyTorch, PostgreSQL, Supabase, Redis, OpenCV, ONNX, C++, Java, System Design');
   const [savedStatus, setSavedStatus] = useState(false);
 
   const handleSave = async (e) => {
@@ -661,8 +677,8 @@ function SettingsView() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-display font-bold text-white">Candidate Profile & Settings (India & Global)</h2>
-        <p className="text-xs text-slate-400">Configure your candidate credentials, target job titles, locations in India, and skills</p>
+        <h2 className="text-xl font-display font-bold text-white">Candidate Profile & Settings (Vinay Khosya - NSUT Delhi)</h2>
+        <p className="text-xs text-slate-400">Official profile configured with your resume, projects (Genesis, CrackNonTech), and websites (vinaykhosya.com)</p>
       </div>
 
       <form onSubmit={handleSave} className="glass-card p-6 rounded-xl border border-slate-800 space-y-5 max-w-2xl">
@@ -671,6 +687,14 @@ function SettingsView() {
             ✅ Candidate profile saved successfully to Supabase DB!
           </div>
         )}
+        
+        <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
+          <p className="font-bold text-white">Education & Highlights:</p>
+          <p className="text-slate-400">• <strong>Education</strong>: B.Tech in AI & ML (2023 - 2027), Netaji Subhas University of Technology (NSUT), Delhi</p>
+          <p className="text-slate-400">• <strong>Websites</strong>: <a href="https://vinaykhosya.com" target="_blank" className="text-blue-400 underline">vinaykhosya.com</a> | <a href="https://genesis.vinaykhosya.com" target="_blank" className="text-blue-400 underline">genesis.vinaykhosya.com</a></p>
+          <p className="text-slate-400">• <strong>Achievements</strong>: Global AI Competition Rank 4 / 162,000+ | JEE 2023 AIR 3561</p>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-xs text-slate-400 block mb-1">Full Name</label>

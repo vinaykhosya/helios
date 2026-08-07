@@ -1,0 +1,84 @@
+# Candidate Profile — Vinay Khosya
+candidate:
+  name: "Vinay Khosya"
+  title: "Software Engineer — Backend Systems & AI Infrastructure"
+  email: "vinay.khosya.ug23@nsut.ac.in"
+  phone: "+91-9996303072"
+  websites:
+    - "https://vinaykhosya.com"
+    - "https://genesis.vinaykhosya.com"
+  location: "India (Pan-India & Remote)"
+  education:
+    institution: "Netaji Subhas University of Technology (NSUT), Delhi"
+    degree: "B.Tech in Artificial Intelligence and Machine Learning"
+    period: "2023 – 2027"
+
+  target_roles:
+    - "Software Engineer"
+    - "AI Systems Engineer"
+    - "Backend Engineer"
+    - "Machine Learning Engineer"
+    - "Full Stack Engineer"
+
+  target_locations:
+    - "Bangalore"
+    - "Gurgaon / Delhi NCR"
+    - "Hyderabad"
+    - "Pune"
+    - "Mumbai"
+    - "Noida"
+    - "Remote (India & Global)"
+
+  experience:
+    - company: "ElectraWireless"
+      role: "AI Systems Engineer"
+      period: "Jan 2026 – Present"
+      location: "Remote"
+      highlights:
+        - "Developed FastAPI backend services powering healthcare AI inference pipelines."
+        - "Built scalable data processing workflows integrating AI models, databases, and sensor streams."
+        - "Improved production reliability by reducing pipeline failures by 30%."
+
+    - company: "ThirdEye AI (JBM Group)"
+      role: "AI Engineer"
+      period: "Aug 2025 – Dec 2025"
+      location: "Gurugram"
+      highlights:
+        - "Developed OCR and anomaly detection pipelines for industrial inspection."
+        - "Optimized ONNX inference pipelines reducing memory usage by 40%."
+        - "Achieved inference latency below 50ms."
+
+    - company: "Gurugram Police Cyber Security Division"
+      role: "Machine Learning Engineer"
+      period: "Apr 2024 – Jul 2024"
+      location: "Gurugram"
+      highlights:
+        - "Developed an offline Android malware detection system."
+        - "Built APK analysis pipelines processing 100,000+ applications."
+        - "Reduced inference time below 2 seconds."
+
+  projects:
+    - name: "Genesis — High Performance World Simulation Engine"
+      stack: "Python, NumPy"
+      url: "https://genesis.vinaykhosya.com"
+      description: "Built a procedural simulation engine featuring terrain generation, hydrology, settlement prediction, and autonomous memory-driven agents. Implemented vectorized computation, flood-fill hydrology, Euclidean Distance Transform, and spatial algorithms."
+
+    - name: "CrackNonTech Recruitment Platform"
+      stack: "FastAPI, PostgreSQL, Supabase"
+      description: "Designed and engineered a recruitment ecosystem featuring authentication, RBAC, audit logging, payments, resume builder, and job management using scalable backend APIs."
+
+    - name: "GuardEye — Offline Android Malware Detection"
+      stack: "Python, Machine Learning"
+      description: "Developed an offline malware detection system with optimized feature extraction and ML pipelines achieving below 2-second inference. Deployed in Haryana Police cybersecurity workflows."
+
+  skills:
+    languages: ["Python", "Java", "C++", "SQL"]
+    backend: ["FastAPI", "REST APIs", "PostgreSQL", "Supabase", "SQLite", "Redis"]
+    ai_ml: ["PyTorch", "NumPy", "OpenCV", "ONNX"]
+    core_cs: ["Data Structures", "Algorithms", "OOP", "Database Design", "System Design"]
+    tools: ["Git", "Docker", "Linux", "VS Code"]
+
+  achievements:
+    - "Global AI Competition Rank 4 / 162,000+ participants"
+    - "JEE 2023 AIR 3561"
+    - "GuardEye deployed in Haryana Police cybersecurity workflows"
