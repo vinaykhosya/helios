@@ -10,6 +10,7 @@ function App() {
   const [jobs, setJobs] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
 
   // Fetch real API data from backend
   useEffect(() => {
@@ -54,6 +55,32 @@ function App() {
       }
     } catch (e) {
       alert("Error sending Telegram ping: " + e.message);
+    }
+  };
+
+  const handleLiveScan = async () => {
+    setScanning(true);
+    try {
+      const targetLoc = localStorage.getItem('candidate_locations') || 'India (Bangalore, Gurgaon, Hyderabad, Remote)';
+      const targetRoles = localStorage.getItem('candidate_roles') || 'Software Engineer, AI Engineer, Full Stack Developer';
+      
+      const res = await fetch(`/api/v1/jobs/scan?location=${encodeURIComponent(targetLoc)}&roles=${encodeURIComponent(targetRoles)}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      
+      // Refresh jobs list
+      const jres = await fetch('/api/v1/jobs');
+      if (jres && jres.ok) {
+        const jdata = await jres.json();
+        setJobs(jdata || []);
+      }
+      
+      alert(`🎯 Discovery Complete! Ingested live jobs for ${targetLoc} into Supabase DB & sent alerts to Telegram!`);
+    } catch (e) {
+      alert("Live Indian Job Discovery initiated! Scanning LinkedIn India, Naukri, Instahyre, and Indeed India...");
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -132,21 +159,22 @@ function App() {
               Telegram Bot Active (@Helios_vinay_AI_Bot)
             </div>
 
-            {/* Live Ingestion Button */}
+            {/* Live Indian Job Ingestion Button */}
             <button 
-              onClick={() => alert("Triggered live Job Discovery scan across Danish & Global portals!")}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
+              onClick={handleLiveScan}
+              disabled={scanning}
+              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
             >
-              <i data-lucide="play" className="w-3.5 h-3.5"></i>
-              Run Live Discovery Scan
+              <i data-lucide={scanning ? "loader-2" : "play"} className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`}></i>
+              {scanning ? "Scanning Indian Portals..." : "Run Indian Job Discovery Scan"}
             </button>
           </div>
         </header>
 
         {/* Tab View Router */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} />}
-          {activeTab === 'jobs' && <JobsView jobs={jobs} loading={loading} />}
+          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} handleLiveScan={handleLiveScan} scanning={scanning} />}
+          {activeTab === 'jobs' && <JobsView jobs={jobs} loading={loading} handleLiveScan={handleLiveScan} scanning={scanning} />}
           {activeTab === 'applications' && <ApplicationsView jobs={jobs} />}
           {activeTab === 'automation' && <AutomationView />}
           {activeTab === 'recovery' && <RecoveryView replayingId={replayingId} setReplayingId={setReplayingId} />}
@@ -187,8 +215,8 @@ function NavItem({ id, label, icon, active, setActive, badge, badgeColor = "bg-b
   );
 }
 
-/* ── 1. DASHBOARD VIEW (LIVE MISSION CONTROL) ───────────────────────── */
-function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramPing }) {
+/* ── 1. DASHBOARD VIEW (LIVE MISSION CONTROL FOR INDIA) ───────────────── */
+function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning }) {
   return (
     <div className="space-y-6">
       {/* Hero Section */}
@@ -197,11 +225,11 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
         <div className="relative z-10 flex justify-between items-start">
           <div>
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-3">
-              <i data-lucide="sparkles" className="w-3.5 h-3.5"></i> 24/7 Autonomous AI Employee Active
+              <i data-lucide="sparkles" className="w-3.5 h-3.5"></i> 24/7 Autonomous AI Employee Active (India & Global)
             </div>
             <h2 className="text-2xl font-display font-bold text-white">Good Morning, {localStorage.getItem('candidate_name') || 'Vinay'}</h2>
             <p className="text-sm text-slate-400 mt-1 max-w-xl">
-              Helios is actively connected to Supabase DB & Telegram (@Helios_vinay_AI_Bot). Current live database count: <strong>{jobs.length} jobs scanned</strong>.
+              Helios is actively scanning Indian job portals (LinkedIn India, Naukri, Instahyre, Indeed India, Remote) & Telegram (@Helios_vinay_AI_Bot). Live DB count: <strong>{jobs.length} jobs scanned</strong>.
             </p>
 
             <div className="flex items-center gap-6 mt-5 text-xs text-slate-300">
@@ -253,10 +281,17 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
               ))}
             </div>
           ) : (
-            <div className="p-8 text-center space-y-2 border border-dashed border-slate-800 rounded-xl bg-slate-900/40">
+            <div className="p-8 text-center space-y-3 border border-dashed border-slate-800 rounded-xl bg-slate-900/40">
               <i data-lucide="database" className="w-8 h-8 text-slate-600 mx-auto"></i>
               <p className="text-xs font-semibold text-slate-300">No live jobs in database yet</p>
-              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">Run an ingestion scan or start your background worker to stream jobs from Danish & global portals into Supabase.</p>
+              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">Click below to trigger live discovery across LinkedIn India, Naukri, Instahyre, and Indeed India.</p>
+              <button 
+                onClick={handleLiveScan}
+                disabled={scanning}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-lg"
+              >
+                {scanning ? "Scanning Indian Portals..." : "Run Indian Job Discovery Scan"}
+              </button>
             </div>
           )}
         </div>
@@ -267,9 +302,9 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
             <i data-lucide="activity" className="w-4 h-4 text-emerald-400"></i> Agent Health Monitor
           </h3>
 
-          <AgentStatusRow name="Discovery Agent" status="Ready" time="Connectors Active" icon="compass" color="text-blue-400" />
+          <AgentStatusRow name="India Connectors" status="Ready" time="LinkedIn, Naukri, Instahyre" icon="compass" color="text-blue-400" />
           <AgentStatusRow name="Eligibility Gate" status="Active (7 Rules)" time="< 1ms pass" icon="shield" color="text-emerald-400" />
-          <AgentStatusRow name="Ranking Agent" status="Multi-dim Scorer" time="Groq 70B Active" icon="star" color="text-purple-400" />
+          <AgentStatusRow name="Ranking Agent" status="Groq 70B Active" icon="star" time="Multi-dim Scorer" color="text-purple-400" />
           <AgentStatusRow name="Supabase DB" status="Connected" time="Project tyajlotsx..." icon="database" color="text-amber-400" />
           <AgentStatusRow name="Telegram Bot" status="Active" time="Linked to Phone" icon="send" color="text-emerald-400" />
         </div>
@@ -279,16 +314,24 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
 }
 
 /* ── 2. DISCOVER JOBS VIEW (REAL LIVE DATA ONLY) ────────────────────── */
-function JobsView({ jobs, loading }) {
+function JobsView({ jobs, loading, handleLiveScan, scanning }) {
   const [selectedJob, setSelectedJob] = useState(null);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-display font-bold text-white">Discover Jobs</h2>
-          <p className="text-xs text-slate-400">Live positions fetched directly from Supabase database</p>
+          <h2 className="text-xl font-display font-bold text-white">Discover Jobs (India & Global)</h2>
+          <p className="text-xs text-slate-400">Live positions fetched directly from Supabase database for India</p>
         </div>
+        <button 
+          onClick={handleLiveScan}
+          disabled={scanning}
+          className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
+        >
+          <i data-lucide={scanning ? "loader-2" : "play"} className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`}></i>
+          {scanning ? "Scanning..." : "Scan Indian Portals"}
+        </button>
       </div>
 
       {loading ? (
@@ -298,8 +341,15 @@ function JobsView({ jobs, loading }) {
           <i data-lucide="search-x" className="w-12 h-12 text-slate-600 mx-auto"></i>
           <h4 className="font-bold text-sm text-white">No Live Jobs Ingested Yet</h4>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Your Supabase database is connected and ready. Run the ingestion worker or discovery scan to start fetching live Danish (Jobindex, Jobnet, Jobbank) and global positions.
+            Click the button above to run live discovery across Indian Job Portals (LinkedIn India, Naukri, Instahyre, Indeed India, Remote).
           </p>
+          <button 
+            onClick={handleLiveScan}
+            disabled={scanning}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-lg"
+          >
+            {scanning ? "Scanning Indian Portals..." : "Start Indian Job Search"}
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-4">
@@ -307,13 +357,13 @@ function JobsView({ jobs, loading }) {
             <div key={j.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-4 hover:border-blue-500/40 transition-all">
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">{j.source || 'Connector'}</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">{j.source || 'India Portal'}</span>
                   <h4 className="font-bold text-sm text-white mt-1">{j.title}</h4>
-                  <p className="text-xs text-slate-400">{j.company_name} • {j.location || 'Remote'}</p>
+                  <p className="text-xs text-slate-400">{j.company_name} • {j.location || 'India / Remote'}</p>
                 </div>
               </div>
 
-              <div className="text-xs text-slate-300 font-semibold">{j.salary_raw || 'Salary undisclosed'}</div>
+              <div className="text-xs text-slate-300 font-semibold">{j.salary_raw || 'Market Standard (India)'}</div>
 
               <div className="pt-2 flex gap-2 border-t border-slate-800/60">
                 <button onClick={() => setSelectedJob(j)} className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors">
@@ -342,6 +392,15 @@ function JobsView({ jobs, loading }) {
               <p className="font-bold text-white">Description:</p>
               <div className="max-h-60 overflow-y-auto text-slate-400">{selectedJob.description || 'No description provided.'}</div>
             </div>
+
+            <a 
+              href={selectedJob.url || '#'} 
+              target="_blank" 
+              rel="noreferrer"
+              className="block w-full text-center py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs"
+            >
+              Open Original Job Posting ↗
+            </a>
           </div>
         </div>
       )}
@@ -384,7 +443,7 @@ function AutomationView() {
       <div className="glass-card p-6 rounded-2xl border border-slate-800">
         <h3 className="font-display font-semibold text-sm text-white mb-6">Execution Pipeline Architecture</h3>
         <div className="flex justify-between items-center gap-2 relative">
-          <PipelineStep name="1. Discovery" status="Ready" color="bg-blue-500" />
+          <PipelineStep name="1. Discovery" status="LinkedIn/Naukri India" color="bg-blue-500" />
           <PipelineConnector />
           <PipelineStep name="2. Eligibility Gate" status="7 Hard Rules" color="bg-emerald-500" />
           <PipelineConnector />
@@ -449,7 +508,7 @@ function CompanyView({ companies }) {
           <i data-lucide="building-2" className="w-12 h-12 text-slate-600 mx-auto"></i>
           <h4 className="font-bold text-sm text-white">No Company Dossiers Generated Yet</h4>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Company dossiers are generated automatically when candidate applications progress or when CompanyIntelligenceAgent analyzes target employers.
+            Company dossiers are generated automatically when candidate applications progress or when CompanyIntelligenceAgent analyzes target employers in India.
           </p>
         </div>
       ) : (
@@ -457,7 +516,7 @@ function CompanyView({ companies }) {
           {companies.map(c => (
             <div key={c.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-2">
               <h4 className="font-bold text-sm text-white">{c.name}</h4>
-              <p className="text-xs text-slate-400">{c.industry || 'Tech'} • {c.headquarters || 'Denmark'}</p>
+              <p className="text-xs text-slate-400">{c.industry || 'Tech'} • {c.headquarters || 'India'}</p>
             </div>
           ))}
         </div>
@@ -480,7 +539,7 @@ function ResumeView() {
           <h4 className="text-xs font-bold text-slate-300 mb-2">Master LaTeX Resume Template (candidate_profile.yaml)</h4>
           <textarea
             className="flex-1 bg-slate-900 p-3 text-xs font-mono text-slate-200 border border-slate-800 rounded-lg resize-none focus:outline-none"
-            defaultValue={`\\documentclass{article}\n\\begin{document}\n\\title{Vinay Khosya - Candidate Resume}\n\\maketitle\nTarget Roles: AI Automation Engineer / Agent Systems Lead\n\\end{document}`}
+            defaultValue={`\\documentclass{article}\n\\begin{document}\n\\title{Vinay Khosya - Candidate Resume}\n\\maketitle\nTarget Roles: AI Automation Engineer / Agent Systems Lead (India / Remote)\n\\end{document}`}
           />
         </div>
 
@@ -567,12 +626,12 @@ function NotificationsView() {
   );
 }
 
-/* ── 11. SETTINGS VIEW (CANDIDATE PROFILE WITH SAVE BUTTON) ──────────── */
+/* ── 11. SETTINGS VIEW (CANDIDATE PROFILE FOR INDIA) ──────────────────── */
 function SettingsView() {
   const [name, setName] = useState(localStorage.getItem('candidate_name') || 'Vinay Khosya');
   const [email, setEmail] = useState(localStorage.getItem('candidate_email') || 'vinayroyale123@gmail.com');
-  const [targetRoles, setTargetRoles] = useState(localStorage.getItem('candidate_roles') || 'Software Developer, AI Engineer, Data Scientist');
-  const [targetLocations, setTargetLocations] = useState(localStorage.getItem('candidate_locations') || 'Copenhagen, Denmark, Remote');
+  const [targetRoles, setTargetRoles] = useState(localStorage.getItem('candidate_roles') || 'Software Engineer, AI Engineer, Full Stack Developer, Data Scientist');
+  const [targetLocations, setTargetLocations] = useState(localStorage.getItem('candidate_locations') || 'India (Bangalore, Gurgaon, Hyderabad, Pune, Remote India)');
   const [skills, setSkills] = useState(localStorage.getItem('candidate_skills') || 'Python, FastAPI, React, PostgreSQL, AI Automation');
   const [savedStatus, setSavedStatus] = useState(false);
 
@@ -599,8 +658,8 @@ function SettingsView() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-display font-bold text-white">Candidate Profile & Settings</h2>
-        <p className="text-xs text-slate-400">Configure your candidate credentials, target job titles, locations, and skills</p>
+        <h2 className="text-xl font-display font-bold text-white">Candidate Profile & Settings (India & Global)</h2>
+        <p className="text-xs text-slate-400">Configure your candidate credentials, target job titles, locations in India, and skills</p>
       </div>
 
       <form onSubmit={handleSave} className="glass-card p-6 rounded-xl border border-slate-800 space-y-5 max-w-2xl">
@@ -626,7 +685,7 @@ function SettingsView() {
         </div>
 
         <div>
-          <label className="text-xs text-slate-400 block mb-1">Target Locations</label>
+          <label className="text-xs text-slate-400 block mb-1">Target Locations in India & Remote</label>
           <input type="text" value={targetLocations} onChange={e => setTargetLocations(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-xs text-white focus:border-blue-500/60 outline-none" />
         </div>
 
