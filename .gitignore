@@ -2,12 +2,19 @@
 node_modules/
 bun.lock
 
-# Python
+# Python & Environment
 __pycache__/
 *.pyc
 *.pyo
 .venv/
 venv/
+.env
+.env.*
+!.env.example
+*.egg-info/
+.pytest_cache/
+file
+
 
 # Compiled documents
 *.pdf
