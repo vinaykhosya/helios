@@ -7,7 +7,10 @@ Supports text messages, HTML formatting, and direct DOM screenshot uploads to @H
 from __future__ import annotations
 
 import os
-import httpx
+import json
+import uuid
+import urllib.request
+import urllib.parse
 from typing import Optional, Dict, Any
 
 
@@ -20,33 +23,48 @@ class TelegramService:
         self.token = token or os.getenv("TELEGRAM_BOT_TOKEN", "7636566180:AAGIZRXZRqD7gx-YfkRLGH3TpUyyqe55E0E")
         self.chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "8466657787")
 
-    async def send_message(self, text: str) -> Dict[str, Any]:
+    def send_message(self, text: str) -> Dict[str, Any]:
         """Dispatches an HTML formatted text message to Telegram."""
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        payload = {
+        payload = json.dumps({
             "chat_id": self.chat_id,
             "text": text,
             "parse_mode": "HTML"
-        }
+        }).encode("utf-8")
+        
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(url, json=payload)
-                return resp.json()
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                return json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    async def send_screenshot(self, photo_path: str, caption: str) -> Dict[str, Any]:
-        """Uploads a DOM screenshot image directly to Telegram with a caption."""
+    def send_screenshot(self, photo_path: str, caption: str) -> Dict[str, Any]:
+        """Uploads a DOM screenshot image directly to Telegram with a caption using multipart form data."""
         url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
+        
+        if not os.path.exists(photo_path):
+            return self.send_message(f"{caption}\n(Screenshot file missing: {photo_path})")
+
         try:
-            if os.path.exists(photo_path):
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    with open(photo_path, "rb") as f:
-                        files = {"photo": (os.path.basename(photo_path), f, "image/png")}
-                        data = {"chat_id": self.chat_id, "caption": caption, "parse_mode": "HTML"}
-                        resp = await client.post(url, data=data, files=files)
-                        return resp.json()
-            else:
-                return await self.send_message(f"{caption}\n(Screenshot file missing at {photo_path})")
+            with open(photo_path, "rb") as f:
+                img_bytes = f.read()
+
+            bound = "----WebKitFormBoundary" + uuid.uuid4().hex
+            body = bytearray()
+            body.extend(f"--{bound}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{self.chat_id}\r\n".encode("utf-8"))
+            body.extend(f"--{bound}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption}\r\n".encode("utf-8"))
+            body.extend(f"--{bound}\r\nContent-Disposition: form-data; name=\"parse_mode\"\r\n\r\nHTML\r\n".encode("utf-8"))
+            body.extend(f"--{bound}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{os.path.basename(photo_path)}\"\r\nContent-Type: image/png\r\n\r\n".encode("utf-8"))
+            body.extend(img_bytes)
+            body.extend(f"\r\n--{bound}--\r\n".encode("utf-8"))
+
+            req = urllib.request.Request(
+                url,
+                data=bytes(body),
+                headers={"Content-Type": f"multipart/form-data; boundary={bound}"}
+            )
+            with urllib.request.urlopen(req, timeout=20.0) as resp:
+                return json.loads(resp.read().decode("utf-8"))
         except Exception as e:
-            return await self.send_message(f"{caption}\n(Screenshot upload notice: {e})")
+            return self.send_message(f"{caption}\n(Screenshot upload notice: {e})")
