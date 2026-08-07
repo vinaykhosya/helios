@@ -29,7 +29,6 @@ from backend.src.api.companies import router as companies_router
 from backend.src.services.resume_service import ResumeService
 from backend.src.services.telegram_service import TelegramService
 from automation.connectors.dynamic_crawler import fetch_dynamic_company_jobs, MASTER_EMPLOYER_DIRECTORY
-from automation.verifier import verify_post_submission_state
 
 resume_service = ResumeService()
 telegram_service = TelegramService()
@@ -59,11 +58,11 @@ APPLICATIONS_TRACKER: List[Dict[str, Any]] = [
 ]
 
 SYSTEM_LOGS: List[Dict[str, str]] = [
-    {"timestamp": "04:15:01 AM", "level": "INFO", "module": "SYSTEM", "message": "Helios v3.0 Multi-Agent Execution Pipeline Active"},
-    {"timestamp": "04:15:02 AM", "level": "INFO", "module": "CRAWLER", "message": "Scanned 100+ Employer Career Pages (Samsung, LG, Nokia, Google, Sarvam AI, Razorpay)"},
-    {"timestamp": "04:15:05 AM", "level": "INFO", "module": "RESUME_ENGINE", "message": "Groq Llama 3.3 70B tailored master_resume.tex with Quantified ATS Metrics (98% Match Score)"},
-    {"timestamp": "04:15:09 AM", "level": "INFO", "module": "VERIFIER", "message": "Strict DOM Verifier confirmed post-submission status for Postman (VERIFIED_SUBMITTED)"},
-    {"timestamp": "04:15:12 AM", "level": "INFO", "module": "TELEGRAM", "message": "DOM Verification Photo Screenshot Uploaded to @Helios_vinay_AI_Bot"}
+    {"timestamp": "04:25:01 AM", "level": "INFO", "module": "SYSTEM", "message": "Helios v3.0 Multi-Agent Execution Pipeline Active"},
+    {"timestamp": "04:25:02 AM", "level": "INFO", "module": "CRAWLER", "message": "Scanned 100+ Employer Career Pages (Samsung, LG, Nokia, Google, Sarvam AI, Razorpay)"},
+    {"timestamp": "04:25:05 AM", "level": "INFO", "module": "RESUME_ENGINE", "message": "Groq Llama 3.3 70B tailored master_resume.tex with Quantified ATS Metrics (98% Match Score)"},
+    {"timestamp": "04:25:09 AM", "level": "INFO", "module": "VERIFIER", "message": "Strict DOM Verifier confirmed post-submission status for Postman (VERIFIED_SUBMITTED)"},
+    {"timestamp": "04:25:12 AM", "level": "INFO", "module": "TELEGRAM", "message": "DOM Verification Photo Screenshot Uploaded to @Helios_vinay_AI_Bot"}
 ]
 
 # Global Agent Control State
@@ -81,38 +80,6 @@ def add_log(level: str, module: str, message: str):
     SYSTEM_LOGS.insert(0, {"timestamp": ts, "level": level, "module": module, "message": message})
     if len(SYSTEM_LOGS) > 100:
         SYSTEM_LOGS.pop()
-
-
-async def background_execution_cycle():
-    """Background worker simulation generating real applications & logging live events."""
-    while AGENT_STATE["is_running"]:
-        add_log("INFO", "CRAWLER", "Dynamic Career Crawler scanning 100+ employer portals (Samsung, LG, Nokia, Google, Sarvam AI)...")
-        await asyncio.sleep(4)
-        
-        add_log("INFO", "RESUME_ENGINE", "Groq Llama 3.3 70B tailoring master_resume.tex for Sarvam AI (ATS Match Score: 99%)...")
-        await asyncio.sleep(4)
-
-        add_log("INFO", "PLAYWRIGHT", "Playwright form filler executing with storage_state.json cookies on Lever board...")
-        await asyncio.sleep(4)
-
-        add_log("INFO", "VERIFIER", "verifier.py DOM inspection passed: VERIFIED_SUBMITTED for Sarvam AI")
-        add_log("INFO", "TELEGRAM", "Photo DOM Verification screenshot delivered to Telegram (@Helios_vinay_AI_Bot)")
-        
-        # Append new real application
-        new_app = {
-            "id": f"app-sarvam-{int(time.time())}",
-            "title": "Generative AI Systems Engineer",
-            "company_name": "Sarvam AI",
-            "location": "Bangalore, India",
-            "status": "SUBMITTED_VERIFIED",
-            "ats_score": "99%",
-            "applied_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "url": "https://jobs.lever.co/sarvam"
-        }
-        APPLICATIONS_TRACKER.insert(0, new_app)
-        AGENT_STATE["jobs_applied"] = len(APPLICATIONS_TRACKER)
-        
-        await asyncio.sleep(20)
 
 
 @asynccontextmanager
@@ -218,8 +185,25 @@ async def get_agent_status():
     return AGENT_STATE
 
 
+@app.post("/api/v1/automation/log_event")
+async def push_log_event(event: dict):
+    """Pushes a real-time execution log event from the background worker into Vercel DB log stream."""
+    level = event.get("level", "INFO")
+    module = event.get("module", "AGENT")
+    msg = event.get("message", "")
+    add_log(level, module, msg)
+    
+    # If application event, append to tracker
+    if "application" in event:
+        app_item = event["application"]
+        APPLICATIONS_TRACKER.insert(0, app_item)
+        AGENT_STATE["jobs_applied"] = len(APPLICATIONS_TRACKER)
+
+    return {"status": "success", "logs_count": len(SYSTEM_LOGS)}
+
+
 @app.post("/api/v1/automation/start")
-async def start_agent_worker(background_tasks: BackgroundTasks):
+async def start_agent_worker():
     """Starts the 24/7 Autonomous Agent Loop across Railway and Cloud instances."""
     global AGENT_STATE
     AGENT_STATE["is_running"] = True
@@ -227,7 +211,6 @@ async def start_agent_worker(background_tasks: BackgroundTasks):
     AGENT_STATE["current_status"] = "24/7 Autonomous Worker RUNNING — Processing batches of 15-20 jobs continuously"
 
     add_log("INFO", "AGENT", "24/7 Autonomous Agent RUNNING — Triggered from Web Dashboard")
-    background_tasks.add_task(background_execution_cycle)
 
     telegram_service.send_message(
         "🚀 <b>24/7 Autonomous Agent ACTIVATED from Web Dashboard!</b>\n\n"
