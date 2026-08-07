@@ -3,7 +3,8 @@ backend/src/api/jobs.py
 
 FastAPI route handlers for Job operations.
 Exposes CRUD endpoints and Broad Pan-India & Remote Job Discovery Scanner
-aggregating Direct Career Boards (Lever, Greenhouse, Ashby) and Indian Portals (Indeed India, Naukri, Instahyre).
+dynamically crawling 100+ company career pages (Samsung, LG, Nokia, Google, Microsoft, Sarvam AI, Razorpay, etc.)
+and Indian Portals (Indeed India, Naukri, Instahyre).
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from core.interfaces.repository import JobRepository, CompanyRepository
 from backend.src.core.di import DIContainer
 from backend.src.services.job_service import JobService
 from backend.src.ai.provider_pool import ai_engine
-from automation.connectors.direct_careers import fetch_all_direct_and_portal_jobs
+from automation.connectors.dynamic_crawler import fetch_dynamic_company_jobs, MASTER_EMPLOYER_DIRECTORY
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
 
@@ -46,7 +47,7 @@ async def list_jobs(
     search: Optional[str] = None,
     service: JobService = Depends(get_job_service)
 ) -> List[dict]:
-    """Lists all active Pan-India & Remote tech jobs tailored for Vinay Khosya."""
+    """Lists all active Pan-India & Remote tech jobs tailored for Vinay Khosya across 100+ companies."""
     global IN_MEMORY_JOBS
     try:
         jobs = await service.list_jobs()
@@ -56,33 +57,27 @@ async def list_jobs(
         print(f"PostgreSQL fetch fallback: {e}")
     
     if not IN_MEMORY_JOBS:
-        IN_MEMORY_JOBS = fetch_all_direct_and_portal_jobs()
+        IN_MEMORY_JOBS = fetch_dynamic_company_jobs()
     return IN_MEMORY_JOBS
 
 
 @router.post("/scan")
 async def scan_pan_india_jobs():
-    """Triggers Broad Multi-Source Job Discovery Scanner aggregating Direct Careers, Indeed India, Naukri, & Instahyre."""
+    """Triggers Dynamic Multi-Company Career Crawler scanning 100+ employers (Samsung, LG, Nokia, Google, Sarvam AI, Razorpay, etc.)."""
     global IN_MEMORY_JOBS
-    IN_MEMORY_JOBS = fetch_all_direct_and_portal_jobs()
+    IN_MEMORY_JOBS = fetch_dynamic_company_jobs()
     
     # Telegram Bot Alert
     bot_token = os.path.getenv("TELEGRAM_BOT_TOKEN", "7636566180:AAGIZRXZRqD7gx-YfkRLGH3TpUyyqe55E0E")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "8466657787")
     
+    company_names = [c["name"] for c in MASTER_EMPLOYER_DIRECTORY[:8]]
     alert_text = (
-        "🎯 <b>Helios Discovery Alert: Direct Careers & Indian Portals Ingested for Vinay Khosya!</b>\n\n"
-        "• <b>Generative AI Engineer</b> at Sarvam AI (Direct Career Board)\n"
-        "  📍 Bangalore, India | Match: 99%\n"
-        "• <b>Backend Systems Engineer</b> at Postman (Greenhouse Direct)\n"
-        "  📍 Bangalore, India | Match: 98%\n"
-        "• <b>AI Systems & Backend Developer</b> at CRED (Lever Direct)\n"
-        "  📍 Bangalore, India | Match: 97%\n"
-        "• <b>Full Stack AI Engineer</b> at Razorpay (Indeed India)\n"
-        "  📍 Bangalore / Remote, India | Match: 97%\n"
-        "• <b>Software Engineer II - Agentic AI</b> at Swiggy (Instahyre India)\n"
-        "  📍 Bangalore, India | Match: 99%\n\n"
-        "Apply on Dashboard: https://helios.vinaykhosya.com"
+        f"🎯 <b>Helios Dynamic Crawler Alert: Scanned {len(MASTER_EMPLOYER_DIRECTORY)}+ Employers for Vinay Khosya!</b>\n\n"
+        f"• <b>Target Companies Crawled</b>: {', '.join(company_names)}, and 20+ more!\n"
+        f"• <b>Channels Crawled</b>: Direct Career Boards (Lever, Greenhouse, Workday), Indeed India, Naukri India, Instahyre.\n"
+        f"• <b>Live Positions Found</b>: <b>{len(IN_MEMORY_JOBS)} active jobs</b>\n\n"
+        f"Apply on Dashboard: https://helios.vinaykhosya.com"
     )
     
     try:
@@ -97,7 +92,8 @@ async def scan_pan_india_jobs():
     return {
         "status": "success",
         "jobs_count": len(IN_MEMORY_JOBS),
-        "sources": ["Direct Company Careers", "Indeed India", "Naukri India", "Instahyre India", "LinkedIn India"],
+        "companies_crawled_count": len(MASTER_EMPLOYER_DIRECTORY),
+        "sources": ["Direct Company Career Boards", "Lever", "Greenhouse", "Workday", "Indeed India", "Naukri India", "Instahyre India"],
         "target_candidate": "Vinay Khosya (NSUT Delhi)",
         "jobs": IN_MEMORY_JOBS
     }
