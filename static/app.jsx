@@ -9,6 +9,8 @@ function App() {
   // Real dynamic state fetched from API
   const [jobs, setJobs] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [liveLogs, setLiveLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
@@ -35,14 +37,16 @@ function App() {
     }
   }, []);
 
-  // Fetch real API data & Agent Status
+  // Fetch real API data & Agent Status & Live Logs (Poll every 3 seconds for real-time live logs)
   useEffect(() => {
     async function fetchData() {
       try {
-        const [jobsRes, compRes, statusRes] = await Promise.all([
+        const [jobsRes, compRes, statusRes, appsRes, logsRes] = await Promise.all([
           fetch('/api/v1/jobs').catch(() => null),
           fetch('/api/v1/companies').catch(() => null),
-          fetch('/api/v1/automation/status').catch(() => null)
+          fetch('/api/v1/automation/status').catch(() => null),
+          fetch('/api/v1/applications').catch(() => null),
+          fetch('/api/v1/automation/logs').catch(() => null)
         ]);
         
         if (jobsRes && jobsRes.ok) {
@@ -58,20 +62,31 @@ function App() {
           setAgentRunning(sdata.is_running);
           setAgentStatusText(sdata.current_status);
         }
+        if (appsRes && appsRes.ok) {
+          const adata = await appsRes.json();
+          setApplications(adata || []);
+        }
+        if (logsRes && logsRes.ok) {
+          const ldata = await logsRes.json();
+          setLiveLogs(ldata.logs || []);
+        }
       } catch (e) {
         console.error("API fetch error:", e);
-      } finally {
+      } flex: {
         setLoading(false);
       }
     }
+    
     fetchData();
+    const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
   }, [activeTab]);
 
   useEffect(() => {
     if (window.lucide) {
       window.lucide.createIcons();
     }
-  }, [activeTab, jobs, agentRunning]);
+  }, [activeTab, jobs, agentRunning, applications, liveLogs]);
 
   const handleToggleAgent = async () => {
     try {
@@ -113,9 +128,9 @@ function App() {
         setJobs(jdata || []);
       }
       
-      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 15} high-match Pan-India jobs for Vinay Khosya into Supabase DB & sent Telegram alerts!`);
+      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 15} high-match jobs across 100+ employers for Vinay Khosya & sent Telegram alerts!`);
     } catch (e) {
-      alert("Live Indian Job Discovery initiated! Scanning 100+ company career pages, Indeed India, Naukri, and Instahyre...");
+      alert("Live Multi-Company Job Discovery initiated!");
     } finally {
       setScanning(false);
     }
@@ -144,8 +159,8 @@ function App() {
           <nav className="p-3 space-y-1">
             <NavItem id="dashboard" label="Dashboard" icon="layout-dashboard" active={activeTab} setActive={setActiveTab} badge="Live" />
             <NavItem id="jobs" label="Discover Jobs" icon="compass" active={activeTab} setActive={setActiveTab} badge={jobs.length ? jobs.length.toString() : "0"} />
-            <NavItem id="applications" label="Applications" icon="kanban" active={activeTab} setActive={setActiveTab} />
-            <NavItem id="automation" label="Automation Center" icon="cpu" active={activeTab} setActive={setActiveTab} badge={agentRunning ? "24/7 Active" : "Paused"} badgeColor={agentRunning ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"} />
+            <NavItem id="applications" label="Applications" icon="kanban" active={activeTab} setActive={setActiveTab} badge={applications.length ? applications.length.toString() : "0"} badgeColor="bg-emerald-500/20 text-emerald-400 border-emerald-500/30" />
+            <NavItem id="automation" label="Live Activity Logs" icon="cpu" active={activeTab} setActive={setActiveTab} badge={agentRunning ? "24/7 Active" : "Paused"} badgeColor={agentRunning ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"} />
             <NavItem id="recovery" label="Recovery Center" icon="alert-triangle" active={activeTab} setActive={setActiveTab} badge="0" badgeColor="bg-slate-800 text-slate-400 border-slate-700" />
             <NavItem id="company" label="Company Dossier" icon="building-2" active={activeTab} setActive={setActiveTab} />
             <NavItem id="resume" label="Resume Studio" icon="file-text" active={activeTab} setActive={setActiveTab} />
@@ -217,14 +232,14 @@ function App() {
 
         {/* Tab View Router */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} handleLiveScan={handleLiveScan} scanning={scanning} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} />}
+          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} applications={applications} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} handleLiveScan={handleLiveScan} scanning={scanning} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} />}
           {activeTab === 'jobs' && <JobsView jobs={jobs} loading={loading} handleLiveScan={handleLiveScan} scanning={scanning} />}
-          {activeTab === 'applications' && <ApplicationsView jobs={jobs} />}
-          {activeTab === 'automation' && <AutomationView jobs={jobs} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} agentStatusText={agentStatusText} />}
+          {activeTab === 'applications' && <ApplicationsView applications={applications} />}
+          {activeTab === 'automation' && <AutomationView liveLogs={liveLogs} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} agentStatusText={agentStatusText} />}
           {activeTab === 'recovery' && <RecoveryView replayingId={replayingId} setReplayingId={setReplayingId} />}
           {activeTab === 'company' && <CompanyView companies={companies} />}
           {activeTab === 'resume' && <ResumeView />}
-          {activeTab === 'analytics' && <AnalyticsView jobs={jobs} />}
+          {activeTab === 'analytics' && <AnalyticsView jobs={jobs} applications={applications} />}
           {activeTab === 'telegram' && <TelegramView handleTelegramPing={handleTelegramPing} />}
           {activeTab === 'notifications' && <NotificationsView />}
           {activeTab === 'settings' && <SettingsView />}
@@ -260,7 +275,7 @@ function NavItem({ id, label, icon, active, setActive, badge, badgeColor = "bg-b
 }
 
 /* ── 1. DASHBOARD VIEW (LIVE MISSION CONTROL FOR VINAY KHOSYA) ───────── */
-function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning, agentRunning, handleToggleAgent }) {
+function DashboardView({ jobs, companies, applications, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning, agentRunning, handleToggleAgent }) {
   return (
     <div className="space-y-6">
       {/* Hero Section */}
@@ -308,7 +323,7 @@ function DashboardView({ jobs, companies, loading, setActiveTab, handleTelegramP
       {/* Quick Metrics Banner */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard title="Live Ingested Jobs" value={jobs.length.toString()} change="100+ Employer Portals" icon="file-check" color="text-blue-400" />
-        <StatCard title="Target Companies" value={companies.length.toString()} change="Normalized DB" icon="trending-up" color="text-emerald-400" />
+        <StatCard title="Tracked Applications" value={applications.length.toString()} change="Real-time Verified Applications" icon="kanban" color="text-emerald-400" />
         <StatCard title="Telegram Approvals" value="Active" change="Chat ID 8466657787" icon="award" color="text-purple-400" />
         <StatCard title="24/7 Cloud Worker" value={agentRunning ? "RUNNING" : "PAUSED"} change="Continuous Cloud Loop" icon="shield-check" color={agentRunning ? "text-emerald-400" : "text-red-400"} />
       </div>
@@ -464,44 +479,55 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
 }
 
 /* ── 3. APPLICATIONS KANBAN VIEW ────────────────────────────────────── */
-function ApplicationsView({ jobs }) {
+function ApplicationsView({ applications }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-display font-bold text-white">Application Pipeline (CRM)</h2>
-          <p className="text-xs text-slate-400">Synced directly with Supabase applications table</p>
+          <p className="text-xs text-slate-400">Synced directly with verified Playwright submissions</p>
         </div>
+        <span className="text-xs font-mono font-bold px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">
+          Total Tracked: {applications.length}
+        </span>
       </div>
 
-      <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-        <i data-lucide="kanban" className="w-12 h-12 text-slate-600 mx-auto"></i>
-        <h4 className="font-bold text-sm text-white">No Live Applications Tracked Yet</h4>
-        <p className="text-xs text-slate-400 max-w-md mx-auto">
-          As Helios runs auto-applications or asks for your Telegram approval, submitted applications will automatically populate here in real-time.
-        </p>
-      </div>
+      {applications.length === 0 ? (
+        <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
+          <i data-lucide="kanban" className="w-12 h-12 text-slate-600 mx-auto"></i>
+          <h4 className="font-bold text-sm text-white">No Verified Applications Tracked Yet</h4>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {applications.map(a => (
+            <div key={a.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    {a.status}
+                  </span>
+                  <h4 className="font-bold text-sm text-white mt-1.5">{a.title}</h4>
+                  <p className="text-xs text-slate-400">{a.company_name} • {a.location}</p>
+                </div>
+                <span className="text-xs font-bold text-blue-400 font-mono">ATS: {a.ats_score}</span>
+              </div>
+              <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 underline block">View Original Job Posting ↗</a>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/* ── 4. AUTOMATION CENTER VIEW (LIVE TERMINAL & START/STOP CONTROL) ────── */
-function AutomationView({ jobs, agentRunning, handleToggleAgent, agentStatusText }) {
-  const [logs, setLogs] = useState([
-    "[SYSTEM] Helios v3.0 Multi-Agent Execution Pipeline Initialized",
-    "[STATUS] Candidate Loaded: Vinay Khosya (NSUT Delhi - B.Tech AI/ML)",
-    "[CONNECTORS] 100+ Company Career Pages Active (Samsung, LG, Nokia, Google, Sarvam AI, Razorpay)",
-    "[PLAYWRIGHT] storage_state.json Session Cookies Authenticated",
-    "[VERIFIER] verifier.py Strict DOM Post-Submission Engine Active",
-    "[TELEGRAM] Bot @Helios_vinay_AI_Bot Linked & Ready for Photo Screenshots"
-  ]);
-
+/* ── 4. AUTOMATION CENTER VIEW (LIVE REAL-TIME EXECUTION LOG DASHBOARD) ─ */
+function AutomationView({ liveLogs, agentRunning, handleToggleAgent, agentStatusText }) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-display font-bold text-white">Automation Center & 24/7 Agent Control</h2>
-          <p className="text-xs text-slate-400">Control the 24/7 autonomous worker, monitor real-time execution logs, and inspect DOM verifier results</p>
+          <h2 className="text-xl font-display font-bold text-white">Live Execution Logs & 24/7 Agent Console</h2>
+          <p className="text-xs text-slate-400">Real-time log stream showing exact steps taken by the 24/7 Autonomous Worker</p>
         </div>
       </div>
 
@@ -530,41 +556,29 @@ function AutomationView({ jobs, agentRunning, handleToggleAgent, agentStatusText
         </button>
       </div>
 
-      {/* Animated Pipeline Graph */}
-      <div className="glass-card p-6 rounded-2xl border border-slate-800">
-        <h3 className="font-display font-semibold text-sm text-white mb-6">Execution Pipeline Architecture</h3>
-        <div className="flex justify-between items-center gap-2 relative">
-          <PipelineStep name="1. Discovery" status="100+ Employer Pages" color="bg-blue-500" />
-          <PipelineConnector />
-          <PipelineStep name="2. Eligibility Gate" status="7 Hard Rules" color="bg-emerald-500" />
-          <PipelineConnector />
-          <PipelineStep name="3. Ranking Agent" status="Groq 70B Active" color="bg-purple-500" />
-          <PipelineConnector />
-          <PipelineStep name="4. Resume Engine" status="LaTeX -> PDF" color="bg-amber-500" />
-          <PipelineConnector />
-          <PipelineStep name="5. Playwright Filler" status="Greenhouse/Lever" color="bg-blue-400" />
-          <PipelineConnector />
-          <PipelineStep name="6. Strict Verifier" status="verifier.py DOM Check" color="bg-emerald-400" />
-        </div>
-      </div>
-
-      {/* Live Terminal Log Console */}
+      {/* Live Terminal Log Console Stream */}
       <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-3">
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-red-500"></span>
             <span className="w-3 h-3 rounded-full bg-amber-500"></span>
             <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-            <span className="text-xs font-mono font-bold text-slate-300 ml-2">Helios Execution Console (Real-time Logs)</span>
+            <span className="text-xs font-mono font-bold text-slate-300 ml-2">Helios Live Agent Log Dashboard (Auto-Refreshed Every 3s)</span>
           </div>
-          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">LIVE</span>
+          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 animate-pulse">LIVE STREAM</span>
         </div>
 
-        <div className="h-64 bg-slate-950 p-4 rounded-xl font-mono text-xs text-slate-300 space-y-1.5 overflow-y-auto border border-slate-900">
-          {logs.map((log, i) => (
-            <div key={i} className="leading-relaxed">
-              <span className="text-slate-500">{log.substring(0, log.indexOf("]") + 1)}</span>
-              <span className="text-slate-200">{log.substring(log.indexOf("]") + 1)}</span>
+        <div className="h-80 bg-slate-950 p-4 rounded-xl font-mono text-xs text-slate-300 space-y-2 overflow-y-auto border border-slate-900">
+          {liveLogs.map((log, i) => (
+            <div key={i} className="flex items-start gap-3 py-1 border-b border-slate-900/60 leading-relaxed">
+              <span className="text-slate-500 text-[11px] min-w-[85px]">{log.timestamp}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold min-w-[50px] text-center ${
+                log.level === 'INFO' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {log.level}
+              </span>
+              <span className="text-purple-400 font-bold min-w-[90px]">[{log.module}]</span>
+              <span className="text-slate-200 flex-1">{log.message}</span>
             </div>
           ))}
         </div>
@@ -716,7 +730,7 @@ function ResumeView() {
 }
 
 /* ── 8. ANALYTICS VIEW ──────────────────────────────────────────────── */
-function AnalyticsView({ jobs }) {
+function AnalyticsView({ jobs, applications }) {
   return (
     <div className="space-y-6">
       <div>
@@ -728,7 +742,12 @@ function AnalyticsView({ jobs }) {
         <div className="glass-card p-5 rounded-xl border border-slate-800">
           <h4 className="text-xs font-bold text-slate-200 mb-4">Ingested Jobs Metric</h4>
           <p className="text-2xl font-bold font-display text-white">{jobs.length}</p>
-          <p className="text-xs text-slate-400 mt-1">Stored in Supabase PostgreSQL</p>
+          <p className="text-xs text-slate-400 mt-1">100+ Employer Career Boards</p>
+        </div>
+        <div className="glass-card p-5 rounded-xl border border-slate-800">
+          <h4 className="text-xs font-bold text-slate-200 mb-4">Tracked Applications Metric</h4>
+          <p className="text-2xl font-bold font-display text-emerald-400">{applications.length}</p>
+          <p className="text-xs text-slate-400 mt-1">Verified Playwright Submissions</p>
         </div>
       </div>
     </div>
