@@ -165,7 +165,7 @@
     {
       "id": "P6-M2-T2",
       "title": "Implement PDFCompiler subprocess handler",
-      "status": "todo",
+      "status": "completed",
       "depends_on": ["P6-M2-T1"],
       "estimated_hours": 3.0,
       "files": ["ai/engines/resume/pdf_compiler.py"],
@@ -175,7 +175,7 @@
     {
       "id": "P7-M1-T1",
       "title": "Set up Playwright browser automation framework",
-      "status": "todo",
+      "status": "completed",
       "depends_on": [],
       "estimated_hours": 2.0,
       "files": ["automation/browser.py"],
@@ -195,7 +195,7 @@
     {
       "id": "P7-M3-T1",
       "title": "Implement GreenhouseFormFiller Playwright automation",
-      "status": "todo",
+      "status": "completed",
       "depends_on": ["P7-M1-T1", "P5-M1-T1"],
       "estimated_hours": 8.0,
       "files": ["automation/fillers/greenhouse.py"],
@@ -205,7 +205,7 @@
     {
       "id": "P7-M4-T1",
       "title": "Implement TelegramNotifier for Human-in-the-loop alerts",
-      "status": "todo",
+      "status": "completed",
       "depends_on": [],
       "estimated_hours": 3.0,
       "files": ["automation/notification.py"],
