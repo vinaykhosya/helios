@@ -5,7 +5,7 @@ Zero-Cost Multi-Account API Key Pool & Rotation Engine for Helios.
 Supports automatic key rotation and provider failover across:
 1. Google Gemini API (gemini-2.0-flash, gemini-1.5-pro)
 2. Groq API (llama-3.3-70b-versatile, llama-3.1-8b-instant)
-3. Tavily Web Search API (1,000 free monthly searches per account)
+3. Tavily Web Search API (4,000 free monthly searches per account)
 
 Automatically catches 429 RateLimit / QuotaExhausted errors and seamlessly switches
 to the next available API key in the pool.
@@ -36,7 +36,7 @@ class KeyState:
 
     def mark_failed(self):
         self.failed_at = time.time()
-        logger.warning(f"API key ending in '...{self.key[-4:]}' marked on cooldown due to rate limit/quota.")
+        logger.warning(f"API key ending in '...{self.key[-6:]}' marked on cooldown due to rate limit/quota.")
 
 
 class MultiKeyPool:
@@ -104,7 +104,7 @@ class ZeroCostAIEngine:
                 if "429" in err_msg or "quota" in err_msg or "resource_exhausted" in err_msg:
                     self.gemini_pool.mark_key_failed(key)
                 else:
-                    logger.error(f"Gemini call failed with non-quota error: {e}")
+                    logger.error(f"Gemini call failed with error: {e}")
                     self.gemini_pool.mark_key_failed(key)
 
         # Step 2: Fallback to Groq Pool
@@ -127,6 +127,11 @@ class ZeroCostAIEngine:
 
     async def _call_gemini(self, key: str, prompt: str, system_instruction: str) -> str:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": key,
+            "Authorization": f"Bearer {key}"
+        }
         payload = {
             "contents": [
                 {
@@ -137,7 +142,7 @@ class ZeroCostAIEngine:
             ]
         }
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code != 200:
                 raise RuntimeError(f"Gemini API status {resp.status_code}: {resp.text}")
             data = resp.json()
@@ -175,6 +180,10 @@ class ZeroCostAIEngine:
                 raise RuntimeError("All Tavily Search API keys exhausted across accounts!")
             try:
                 url = "https://api.tavily.com/search"
+                headers = {
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json"
+                }
                 payload = {
                     "api_key": key,
                     "query": query,
@@ -182,7 +191,7 @@ class ZeroCostAIEngine:
                     "include_answer": True
                 }
                 async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.post(url, json=payload)
+                    resp = await client.post(url, headers=headers, json=payload)
                     if resp.status_code != 200:
                         raise RuntimeError(f"Tavily API status {resp.status_code}: {resp.text}")
                     return resp.json()
