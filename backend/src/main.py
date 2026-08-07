@@ -25,6 +25,9 @@ if base_dir not in sys.path:
 from backend.src.core.di import DIContainer
 from backend.src.api.jobs import router as jobs_router
 from backend.src.api.companies import router as companies_router
+from backend.src.services.resume_service import ResumeService
+
+resume_service = ResumeService()
 
 
 @asynccontextmanager
@@ -131,3 +134,12 @@ async def ping_telegram():
 async def save_profile(profile_data: dict):
     """Saves candidate profile settings (name, email, target roles, skills)."""
     return {"status": "success", "message": "Candidate profile saved successfully!", "data": profile_data}
+
+
+@app.post("/api/v1/resume/tailor")
+async def tailor_resume_api(payload: dict):
+    """Dynamically tailors master_resume.tex for a specific target Job Description using Groq 70B AI."""
+    job_title = payload.get("job_title", "Software Engineer")
+    company = payload.get("company", "Tech Employer")
+    jd = payload.get("job_description", "")
+    return await resume_service.tailor_resume(job_title, company, jd)
