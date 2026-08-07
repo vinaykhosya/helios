@@ -14,8 +14,11 @@ from core.models.job import Job, JobSource
 async def test_replay_engine(tmp_path):
     html_file = tmp_path / "snap_1.html"
     meta_file = tmp_path / "snap_1.json"
+    res_file = tmp_path / "resume.pdf"
+    
     html_file.write_text("<html><body>Form</body></html>", encoding="utf-8")
     meta_file.write_text("{}", encoding="utf-8")
+    res_file.write_text("%PDF-1.5 test", encoding="utf-8")
 
     snapshot = RecoverySnapshot(
         snapshot_id="snap_1",
@@ -43,6 +46,6 @@ async def test_replay_engine(tmp_path):
     )
 
     engine = ReplayEngine()
-    result = await engine.replay_from_snapshot(snapshot, job, candidate, resume_path="/tmp/res.pdf")
+    result = await engine.replay_from_snapshot(snapshot, job, candidate, resume_path=str(res_file))
     assert result.snapshot_id == "snap_1"
     assert result.success is True
