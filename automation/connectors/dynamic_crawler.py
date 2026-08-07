@@ -12,7 +12,6 @@ import uuid
 import asyncio
 import urllib.parse
 from typing import List, Dict, Any
-from playwright.async_api import async_playwright
 
 # Master Employer Directory (100+ Top Tech & AI Employers)
 MASTER_EMPLOYER_DIRECTORY = [
@@ -72,6 +71,7 @@ async def extract_individual_job_links(company: Dict[str, str]) -> List[Dict[str
     individual_jobs = []
 
     try:
+        from playwright.async_api import async_playwright
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
