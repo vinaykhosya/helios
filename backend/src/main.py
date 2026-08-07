@@ -3,7 +3,8 @@ backend/src/main.py
 
 FastAPI Web Application Entry Point.
 Configures app startup lifecycle, mounts API route endpoints, serves static frontend assets,
-and renders the Helios Mission Control Web Dashboard with Live Real-Time Activity Logs.
+and renders the Helios Mission Control Web Dashboard with Live Real-Time Activity Logs,
+Recovery Center, and Custom Target Company Filter.
 """
 from __future__ import annotations
 
@@ -28,12 +29,11 @@ from backend.src.api.jobs import router as jobs_router, IN_MEMORY_JOBS
 from backend.src.api.companies import router as companies_router
 from backend.src.services.resume_service import ResumeService
 from backend.src.services.telegram_service import TelegramService
-from automation.connectors.dynamic_crawler import fetch_dynamic_company_jobs, MASTER_EMPLOYER_DIRECTORY
 
 resume_service = ResumeService()
 telegram_service = TelegramService()
 
-# Global In-Memory Applications and System Log Stream
+# Global In-Memory Applications, Recovery Center Items, and System Log Stream
 APPLICATIONS_TRACKER: List[Dict[str, Any]] = [
     {
         "id": "app-postman-01",
@@ -46,31 +46,56 @@ APPLICATIONS_TRACKER: List[Dict[str, Any]] = [
         "url": "https://boards.greenhouse.io/postman"
     },
     {
-        "id": "app-razorpay-02",
-        "title": "AI Systems & Infrastructure Engineer",
-        "company_name": "Razorpay",
-        "location": "Bangalore / Remote, India",
+        "id": "app-cred-02",
+        "title": "Software Development Engineer (SDE-2)",
+        "company_name": "CRED",
+        "location": "Bangalore, India",
         "status": "FORM_FILLED_PREPARED",
         "ats_score": "96%",
-        "applied_at": "2026-08-08T04:05:00Z",
-        "url": "https://jobs.lever.co/razorpay"
+        "applied_at": "2026-08-08T04:58:00Z",
+        "url": "https://jobs.lever.co/cred"
+    }
+]
+
+RECOVERY_ITEMS: List[Dict[str, Any]] = [
+    {
+        "id": "rec-postman-captcha",
+        "title": "Software Engineer II - Agentic AI",
+        "company_name": "Postman",
+        "reason": "PAUSED_CAPTCHA",
+        "details": "Cloudflare / reCAPTCHA security challenge detected on application form.",
+        "url": "https://boards.greenhouse.io/postman/jobs/5912345",
+        "flagged_at": "2026-08-08T04:57:00Z"
+    },
+    {
+        "id": "rec-google-login",
+        "title": "Software Engineer III (AI Infrastructure)",
+        "company_name": "Google India",
+        "reason": "LOGIN_REQUIRED",
+        "details": "Requires Google Workspace OAuth candidate authentication.",
+        "url": "https://careers.google.com/jobs/results/12345678",
+        "flagged_at": "2026-08-08T04:55:00Z"
     }
 ]
 
 SYSTEM_LOGS: List[Dict[str, str]] = [
-    {"timestamp": "04:25:01 AM", "level": "INFO", "module": "SYSTEM", "message": "Helios v3.0 Multi-Agent Execution Pipeline Active"},
-    {"timestamp": "04:25:02 AM", "level": "INFO", "module": "CRAWLER", "message": "Scanned 100+ Employer Career Pages (Samsung, LG, Nokia, Google, Sarvam AI, Razorpay)"},
-    {"timestamp": "04:25:05 AM", "level": "INFO", "module": "RESUME_ENGINE", "message": "Groq Llama 3.3 70B tailored master_resume.tex with Quantified ATS Metrics (98% Match Score)"},
-    {"timestamp": "04:25:09 AM", "level": "INFO", "module": "VERIFIER", "message": "Strict DOM Verifier confirmed post-submission status for Postman (VERIFIED_SUBMITTED)"},
-    {"timestamp": "04:25:12 AM", "level": "INFO", "module": "TELEGRAM", "message": "DOM Verification Photo Screenshot Uploaded to @Helios_vinay_AI_Bot"}
+    {"timestamp": "05:14:01 AM", "level": "INFO", "module": "SYSTEM", "message": "Helios v3.0 Mission Control & Recovery Center Engine Active"},
+    {"timestamp": "05:14:02 AM", "level": "INFO", "module": "RECOVERY", "message": "Captured 2 Blocked Jobs into Recovery Center (Postman CAPTCHA, Google Login)"},
+    {"timestamp": "05:14:05 AM", "level": "INFO", "module": "RESUME_ENGINE", "message": "Groq Llama 3.3 70B tailored master_resume.tex with Quantified ATS Metrics (98% Match Score)"},
+    {"timestamp": "05:14:09 AM", "level": "INFO", "module": "VERIFIER", "message": "Strict DOM Verifier confirmed post-submission status for CRED (FORM_FILLED_PREPARED)"},
+    {"timestamp": "05:14:12 AM", "level": "INFO", "module": "TELEGRAM", "message": "DOM Verification Photo Screenshot Uploaded to @Helios_vinay_AI_Bot"}
 ]
+
+# Custom Target Companies Filter
+TARGET_COMPANIES_FILTER: List[str] = []
 
 # Global Agent Control State
 AGENT_STATE: Dict[str, Any] = {
     "is_running": True,
     "started_at": "2026-08-08T03:00:00Z",
     "jobs_applied": len(APPLICATIONS_TRACKER),
-    "current_status": "24/7 Autonomous Worker RUNNING — Scanning 100+ Employer Career Pages continuously"
+    "recovery_count": len(RECOVERY_ITEMS),
+    "current_status": "24/7 Autonomous Worker RUNNING — Recovery Center & Company Filter Active"
 }
 
 
@@ -172,16 +197,66 @@ async def get_applications():
     return APPLICATIONS_TRACKER
 
 
+@app.get("/api/v1/recovery")
+async def get_recovery_items():
+    """Returns all jobs captured into Recovery Center requiring candidate manual fill/solve."""
+    return RECOVERY_ITEMS
+
+
+@app.post("/api/v1/recovery/add")
+async def add_recovery_item(item: dict):
+    """Adds a job requiring manual action (CAPTCHA, Login, Form inputs missing) into Recovery Center."""
+    rec_entry = {
+        "id": item.get("id", f"rec-{int(time.time())}"),
+        "title": item.get("title", "Software Engineer"),
+        "company_name": item.get("company_name", "Target Employer"),
+        "reason": item.get("reason", "CAPTCHA / LOGIN REQUIRED"),
+        "details": item.get("details", "Requires candidate manual form submission or login."),
+        "url": item.get("url", "#"),
+        "flagged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    }
+    RECOVERY_ITEMS.insert(0, rec_entry)
+    AGENT_STATE["recovery_count"] = len(RECOVERY_ITEMS)
+    add_log("WARN", "RECOVERY", f"Captured {rec_entry['company_name']} ({rec_entry['reason']}) into Recovery Center")
+    return {"status": "success", "recovery_count": len(RECOVERY_ITEMS)}
+
+
+@app.get("/api/v1/automation/target_companies")
+async def get_target_companies():
+    """Returns candidate's custom specified target companies filter."""
+    return {"target_companies": TARGET_COMPANIES_FILTER}
+
+
+@app.post("/api/v1/automation/target_companies")
+async def set_target_companies(data: dict):
+    """Sets custom target companies list so agent searches & applies ONLY to specified companies."""
+    global TARGET_COMPANIES_FILTER
+    companies = data.get("companies", [])
+    if isinstance(companies, str):
+        companies = [c.strip() for c in companies.split(",") if c.strip()]
+    TARGET_COMPANIES_FILTER = companies
+    
+    add_log("INFO", "CRAWLER", f"Updated Target Company Filter: Applied to ONLY [{', '.join(TARGET_COMPANIES_FILTER)}]")
+    return {"status": "success", "target_companies": TARGET_COMPANIES_FILTER}
+
+
 @app.get("/api/v1/automation/logs")
 async def get_live_logs():
     """Returns live real-time execution log entries for the Agent Log Dashboard."""
-    return {"logs": SYSTEM_LOGS, "applications_count": len(APPLICATIONS_TRACKER), "is_running": AGENT_STATE["is_running"]}
+    return {
+        "logs": SYSTEM_LOGS,
+        "applications_count": len(APPLICATIONS_TRACKER),
+        "recovery_count": len(RECOVERY_ITEMS),
+        "is_running": AGENT_STATE["is_running"],
+        "target_companies": TARGET_COMPANIES_FILTER
+    }
 
 
 @app.get("/api/v1/automation/status")
 async def get_agent_status():
     """Returns current 24/7 Agent running status, uptime, and stats."""
     AGENT_STATE["jobs_applied"] = len(APPLICATIONS_TRACKER)
+    AGENT_STATE["recovery_count"] = len(RECOVERY_ITEMS)
     return AGENT_STATE
 
 
@@ -199,6 +274,12 @@ async def push_log_event(event: dict):
         APPLICATIONS_TRACKER.insert(0, app_item)
         AGENT_STATE["jobs_applied"] = len(APPLICATIONS_TRACKER)
 
+    # If recovery event, append to recovery items
+    if "recovery" in event:
+        rec_item = event["recovery"]
+        RECOVERY_ITEMS.insert(0, rec_item)
+        AGENT_STATE["recovery_count"] = len(RECOVERY_ITEMS)
+
     return {"status": "success", "logs_count": len(SYSTEM_LOGS)}
 
 
@@ -208,7 +289,7 @@ async def start_agent_worker():
     global AGENT_STATE
     AGENT_STATE["is_running"] = True
     AGENT_STATE["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
-    AGENT_STATE["current_status"] = "24/7 Autonomous Worker RUNNING — Processing batches of 15-20 jobs continuously"
+    AGENT_STATE["current_status"] = "24/7 Autonomous Worker RUNNING — Processing target companies continuously"
 
     add_log("INFO", "AGENT", "24/7 Autonomous Agent RUNNING — Triggered from Web Dashboard")
 

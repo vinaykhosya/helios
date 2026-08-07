@@ -10,7 +10,9 @@ function App() {
   const [jobs, setJobs] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [applications, setApplications] = useState([]);
+  const [recoveryItems, setRecoveryItems] = useState([]);
   const [liveLogs, setLiveLogs] = useState([]);
+  const [targetCompaniesInput, setTargetCompaniesInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
@@ -37,16 +39,18 @@ function App() {
     }
   }, []);
 
-  // Fetch real API data & Agent Status & Live Logs (Poll every 3 seconds for real-time live logs)
+  // Fetch real API data & Agent Status & Live Logs (Poll every 3 seconds)
   useEffect(() => {
     async function fetchData() {
       try {
-        const [jobsRes, compRes, statusRes, appsRes, logsRes] = await Promise.all([
+        const [jobsRes, compRes, statusRes, appsRes, logsRes, recRes, targetRes] = await Promise.all([
           fetch('/api/v1/jobs').catch(() => null),
           fetch('/api/v1/companies').catch(() => null),
           fetch('/api/v1/automation/status').catch(() => null),
           fetch('/api/v1/applications').catch(() => null),
-          fetch('/api/v1/automation/logs').catch(() => null)
+          fetch('/api/v1/automation/logs').catch(() => null),
+          fetch('/api/v1/recovery').catch(() => null),
+          fetch('/api/v1/automation/target_companies').catch(() => null)
         ]);
         
         if (jobsRes && jobsRes.ok) {
@@ -70,6 +74,16 @@ function App() {
           const ldata = await logsRes.json();
           setLiveLogs(ldata.logs || []);
         }
+        if (recRes && recRes.ok) {
+          const rdata = await recRes.json();
+          setRecoveryItems(rdata || []);
+        }
+        if (targetRes && targetRes.ok) {
+          const tdata = await targetRes.json();
+          if (tdata.target_companies && tdata.target_companies.length > 0 && !targetCompaniesInput) {
+            setTargetCompaniesInput(tdata.target_companies.join(', '));
+          }
+        }
       } catch (e) {
         console.error("API fetch error:", e);
       } finally {
@@ -86,7 +100,7 @@ function App() {
     if (window.lucide) {
       window.lucide.createIcons();
     }
-  }, [activeTab, jobs, agentRunning, applications, liveLogs]);
+  }, [activeTab, jobs, agentRunning, applications, recoveryItems, liveLogs]);
 
   const handleToggleAgent = async () => {
     try {
@@ -115,20 +129,34 @@ function App() {
     }
   };
 
+  const handleSaveTargetCompanies = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/v1/automation/target_companies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companies: targetCompaniesInput })
+      });
+      const data = await res.json();
+      alert(`🎯 Custom Target Company Filter Saved!\nHelios will process jobs ONLY for: ${(data.target_companies || []).join(', ') || 'All 100+ Employers'}`);
+    } catch (err) {
+      alert("Error setting target companies: " + err.message);
+    }
+  };
+
   const handleLiveScan = async () => {
     setScanning(true);
     try {
       const res = await fetch('/api/v1/jobs/scan', { method: 'POST' });
       const data = await res.json();
       
-      // Refresh jobs list immediately
       const jres = await fetch('/api/v1/jobs');
       if (jres && jres.ok) {
         const jdata = await jres.json();
         setJobs(jdata || []);
       }
       
-      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 15} high-match jobs across 100+ employers for Vinay Khosya & sent Telegram alerts!`);
+      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 15} high-match jobs for Vinay Khosya & sent Telegram alerts!`);
     } catch (e) {
       alert("Live Multi-Company Job Discovery initiated!");
     } finally {
@@ -161,7 +189,7 @@ function App() {
             <NavItem id="jobs" label="Discover Jobs" icon="compass" active={activeTab} setActive={setActiveTab} badge={jobs.length ? jobs.length.toString() : "0"} />
             <NavItem id="applications" label="Applications" icon="kanban" active={activeTab} setActive={setActiveTab} badge={applications.length ? applications.length.toString() : "0"} badgeColor="bg-emerald-500/20 text-emerald-400 border-emerald-500/30" />
             <NavItem id="automation" label="Live Activity Logs" icon="cpu" active={activeTab} setActive={setActiveTab} badge={agentRunning ? "24/7 Active" : "Paused"} badgeColor={agentRunning ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"} />
-            <NavItem id="recovery" label="Recovery Center" icon="alert-triangle" active={activeTab} setActive={setActiveTab} badge="0" badgeColor="bg-slate-800 text-slate-400 border-slate-700" />
+            <NavItem id="recovery" label="Recovery Center" icon="alert-triangle" active={activeTab} setActive={setActiveTab} badge={recoveryItems.length ? recoveryItems.length.toString() : "0"} badgeColor={recoveryItems.length ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-slate-800 text-slate-400 border-slate-700"} />
             <NavItem id="company" label="Company Dossier" icon="building-2" active={activeTab} setActive={setActiveTab} />
             <NavItem id="resume" label="Resume Studio" icon="file-text" active={activeTab} setActive={setActiveTab} />
             <NavItem id="analytics" label="Analytics & Metrics" icon="bar-chart-3" active={activeTab} setActive={setActiveTab} />
@@ -205,7 +233,6 @@ function App() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* 24/7 Agent Start/Stop Switch Header Button */}
             <button
               onClick={handleToggleAgent}
               className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border transition-all shadow-lg ${
@@ -218,7 +245,6 @@ function App() {
               {agentRunning ? '🟢 24/7 Agent RUNNING (Cloud Worker)' : '🔴 Agent PAUSED — Click to Start'}
             </button>
 
-            {/* Live Indian Job Ingestion Button */}
             <button 
               onClick={handleLiveScan}
               disabled={scanning}
@@ -232,11 +258,11 @@ function App() {
 
         {/* Tab View Router */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} applications={applications} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} handleLiveScan={handleLiveScan} scanning={scanning} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} />}
-          {activeTab === 'jobs' && <JobsView jobs={jobs} loading={loading} handleLiveScan={handleLiveScan} scanning={scanning} />}
+          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} applications={applications} recoveryItems={recoveryItems} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} handleLiveScan={handleLiveScan} scanning={scanning} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} targetCompaniesInput={targetCompaniesInput} setTargetCompaniesInput={setTargetCompaniesInput} handleSaveTargetCompanies={handleSaveTargetCompanies} />}
+          {activeTab === 'jobs' && <JobsView jobs={jobs} loading={loading} handleLiveScan={handleLiveScan} scanning={scanning} targetCompaniesInput={targetCompaniesInput} setTargetCompaniesInput={setTargetCompaniesInput} handleSaveTargetCompanies={handleSaveTargetCompanies} />}
           {activeTab === 'applications' && <ApplicationsView applications={applications} />}
           {activeTab === 'automation' && <AutomationView liveLogs={liveLogs} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} agentStatusText={agentStatusText} />}
-          {activeTab === 'recovery' && <RecoveryView replayingId={replayingId} setReplayingId={setReplayingId} />}
+          {activeTab === 'recovery' && <RecoveryView recoveryItems={recoveryItems} />}
           {activeTab === 'company' && <CompanyView companies={companies} />}
           {activeTab === 'resume' && <ResumeView />}
           {activeTab === 'analytics' && <AnalyticsView jobs={jobs} applications={applications} />}
@@ -274,8 +300,8 @@ function NavItem({ id, label, icon, active, setActive, badge, badgeColor = "bg-b
   );
 }
 
-/* ── 1. DASHBOARD VIEW (LIVE MISSION CONTROL FOR VINAY KHOSYA) ───────── */
-function DashboardView({ jobs, companies, applications, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning, agentRunning, handleToggleAgent }) {
+/* ── 1. DASHBOARD VIEW ──────────────────────────────────────────────── */
+function DashboardView({ jobs, companies, applications, recoveryItems, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning, agentRunning, handleToggleAgent, targetCompaniesInput, setTargetCompaniesInput, handleSaveTargetCompanies }) {
   return (
     <div className="space-y-6">
       {/* Hero Section */}
@@ -288,7 +314,7 @@ function DashboardView({ jobs, companies, applications, loading, setActiveTab, h
             </div>
             <h2 className="text-2xl font-display font-bold text-white">Good Morning, Vinay Khosya</h2>
             <p className="text-sm text-slate-400 mt-1 max-w-xl">
-              Helios is scanning 100+ target tech employers & Indian job portals matching your stack (FastAPI, PyTorch, AI Infra, System Design).
+              Helios is scanning target tech employers matching your stack (FastAPI, PyTorch, AI Infra, System Design).
             </p>
 
             <div className="flex items-center gap-4 mt-5 text-xs">
@@ -320,17 +346,41 @@ function DashboardView({ jobs, companies, applications, loading, setActiveTab, h
         </div>
       </div>
 
+      {/* Target Company Specific Filter Form */}
+      <div className="glass-card p-5 rounded-xl border border-slate-800 bg-slate-900/90 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-display font-bold text-sm text-white flex items-center gap-2">
+              <i data-lucide="filter" className="w-4 h-4 text-purple-400"></i> Custom Target Companies Search & Application Filter
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Specify exact company names (comma-separated). Helios will search and apply ONLY to jobs from these companies.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveTargetCompanies} className="flex gap-3">
+          <input
+            type="text"
+            placeholder="e.g. Google, Samsung, Razorpay, Nokia, Swiggy, Sarvam AI, CRED, Postman"
+            value={targetCompaniesInput}
+            onChange={(e) => setTargetCompaniesInput(e.target.value)}
+            className="flex-1 px-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60"
+          />
+          <button type="submit" className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold shadow-lg transition-colors">
+            Save Target Filter & Apply
+          </button>
+        </form>
+      </div>
+
       {/* Quick Metrics Banner */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard title="Live Ingested Jobs" value={jobs.length.toString()} change="100+ Employer Portals" icon="file-check" color="text-blue-400" />
         <StatCard title="Tracked Applications" value={applications.length.toString()} change="Real-time Verified Applications" icon="kanban" color="text-emerald-400" />
-        <StatCard title="Telegram Approvals" value="Active" change="Chat ID 8466657787" icon="award" color="text-purple-400" />
+        <StatCard title="Recovery Center" value={recoveryItems.length.toString()} change="Blocked / CAPTCHA Jobs Captured" icon="alert-triangle" color="text-amber-400" />
         <StatCard title="24/7 Cloud Worker" value={agentRunning ? "RUNNING" : "PAUSED"} change="Continuous Cloud Loop" icon="shield-check" color={agentRunning ? "text-emerald-400" : "text-red-400"} />
       </div>
 
       {/* Activity Timeline & Live Pipeline Status */}
       <div className="grid grid-cols-3 gap-6">
-        {/* Timeline */}
         <div className="col-span-2 glass-card p-5 rounded-xl border border-slate-800">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display font-semibold text-sm text-white flex items-center gap-2">
@@ -351,28 +401,18 @@ function DashboardView({ jobs, companies, applications, loading, setActiveTab, h
             <div className="p-8 text-center space-y-3 border border-dashed border-slate-800 rounded-xl bg-slate-900/40">
               <i data-lucide="database" className="w-8 h-8 text-slate-600 mx-auto"></i>
               <p className="text-xs font-semibold text-slate-300">No live jobs in database yet</p>
-              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">Click below to trigger live discovery across 100+ company career pages, Indeed India, Naukri, and Instahyre.</p>
-              <button 
-                onClick={handleLiveScan}
-                disabled={scanning}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-lg"
-              >
-                {scanning ? "Scanning Portals..." : "Run Multi-Company Discovery Scan"}
-              </button>
             </div>
           )}
         </div>
 
-        {/* Agent Health Monitor */}
         <div className="glass-card p-5 rounded-xl border border-slate-800 space-y-4">
           <h3 className="font-display font-semibold text-sm text-white flex items-center gap-2">
             <i data-lucide="activity" className="w-4 h-4 text-emerald-400"></i> Agent Health Monitor
           </h3>
 
-          <AgentStatusRow name="100+ Employer Crawler" status="Ready" time="Lever, Greenhouse, Workday" icon="compass" color="text-blue-400" />
-          <AgentStatusRow name="Strict DOM Verifier" status="Active" time="verifier.py" icon="shield" color="text-emerald-400" />
-          <AgentStatusRow name="Ranking Agent" status="Groq 70B Active" icon="star" time="Quantified Metrics Scorer" color="text-purple-400" />
-          <AgentStatusRow name="Supabase DB" status="Connected" time="Project tyajlotsx..." icon="database" color="text-amber-400" />
+          <AgentStatusRow name="Company Site Crawler" status="Ready" time="Lever, Greenhouse, Workday" icon="compass" color="text-blue-400" />
+          <AgentStatusRow name="Recovery Center" status="Active" time="Auto-Captures Blocked Jobs" icon="alert-triangle" color="text-amber-400" />
+          <AgentStatusRow name="Target Company Filter" status="Active" time="Custom User Company List" icon="filter" color="text-purple-400" />
           <AgentStatusRow name="Telegram Bot" status="Active" time="Linked to Phone" icon="send" color="text-emerald-400" />
         </div>
       </div>
@@ -380,16 +420,16 @@ function DashboardView({ jobs, companies, applications, loading, setActiveTab, h
   );
 }
 
-/* ── 2. DISCOVER JOBS VIEW (PAN-INDIA HIGH MATCH POSITIONS) ──────────── */
-function JobsView({ jobs, loading, handleLiveScan, scanning }) {
+/* ── 2. DISCOVER JOBS VIEW ──────────────────────────────────────────── */
+function JobsView({ jobs, loading, handleLiveScan, scanning, targetCompaniesInput, setTargetCompaniesInput, handleSaveTargetCompanies }) {
   const [selectedJob, setSelectedJob] = useState(null);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-display font-bold text-white">Discover Jobs (100+ Company Career Boards & Indian Portals)</h2>
-          <p className="text-xs text-slate-400">Matched positions fetched directly from 100+ target tech employers for Vinay Khosya</p>
+          <h2 className="text-xl font-display font-bold text-white">Discover Jobs</h2>
+          <p className="text-xs text-slate-400">Matched positions fetched directly from target tech employers for Vinay Khosya</p>
         </div>
         <button 
           onClick={handleLiveScan}
@@ -397,83 +437,34 @@ function JobsView({ jobs, loading, handleLiveScan, scanning }) {
           className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
         >
           <i data-lucide={scanning ? "loader-2" : "play"} className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`}></i>
-          {scanning ? "Scanning..." : "Scan 100+ Employer Career Pages"}
+          {scanning ? "Scanning..." : "Scan 100+ Employer Pages"}
         </button>
       </div>
 
-      {loading ? (
-        <div className="p-12 text-center text-xs text-slate-400">Loading jobs...</div>
-      ) : jobs.length === 0 ? (
-        <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-          <i data-lucide="search-x" className="w-12 h-12 text-slate-600 mx-auto"></i>
-          <h4 className="font-bold text-sm text-white">No Live Jobs Ingested Yet</h4>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Click the button above to run live discovery across 100+ Company Career Pages (Lever, Greenhouse, Workday), Indeed India, and Naukri India.
-          </p>
-          <button 
-            onClick={handleLiveScan}
-            disabled={scanning}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-lg"
-          >
-            {scanning ? "Scanning Portals..." : "Start Multi-Company Search"}
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-4">
-          {jobs.map(j => (
-            <div key={j.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-4 hover:border-blue-500/40 transition-all relative">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">{j.source || 'Direct Career Board'}</span>
-                  <h4 className="font-bold text-sm text-white mt-1">{j.title}</h4>
-                  <p className="text-xs text-slate-400">{j.company_name} • {j.location || 'India / Remote'}</p>
-                </div>
-                <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  {j.match_score || '98% Match'}
-                </span>
+      <div className="grid grid-cols-3 gap-4">
+        {jobs.map(j => (
+          <div key={j.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-4 hover:border-blue-500/40 transition-all relative">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">{j.source || 'Direct Career Board'}</span>
+                <h4 className="font-bold text-sm text-white mt-1">{j.title}</h4>
+                <p className="text-xs text-slate-400">{j.company_name} • {j.location || 'India / Remote'}</p>
               </div>
-
-              <div className="text-xs text-slate-300 font-semibold">{j.salary_raw || 'Market Standard'}</div>
-
-              <div className="pt-2 flex gap-2 border-t border-slate-800/60">
-                <button onClick={() => setSelectedJob(j)} className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors">
-                  View Job Details
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {selectedJob && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-end z-50">
-          <div className="w-1/3 bg-[#0D121F] h-full p-6 border-l border-slate-800 space-y-6 overflow-y-auto">
-            <div className="flex justify-between items-center">
-              <h3 className="font-display font-bold text-lg text-white">Job Details</h3>
-              <button onClick={() => setSelectedJob(null)} className="text-slate-400 hover:text-white">✕</button>
+              <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                {j.match_score || '98% Match'}
+              </span>
             </div>
 
-            <div>
-              <h4 className="font-bold text-slate-200">{selectedJob.title}</h4>
-              <p className="text-xs text-slate-400">{selectedJob.company_name} • {selectedJob.location}</p>
-            </div>
+            <div className="text-xs text-slate-300 font-semibold">{j.salary_raw || 'Market Standard'}</div>
 
-            <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
-              <p className="font-bold text-white">Description & Matching Skills:</p>
-              <div className="max-h-60 overflow-y-auto text-slate-400">{selectedJob.description || 'No description provided.'}</div>
+            <div className="pt-2 flex gap-2 border-t border-slate-800/60">
+              <button onClick={() => setSelectedJob(j)} className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors">
+                View Job Details
+              </button>
             </div>
-
-            <a 
-              href={selectedJob.url || '#'} 
-              target="_blank" 
-              rel="noreferrer"
-              className="block w-full text-center py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs shadow-lg"
-            >
-              Open Original Job Posting ↗
-            </a>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
@@ -485,42 +476,35 @@ function ApplicationsView({ applications }) {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-display font-bold text-white">Application Pipeline (CRM)</h2>
-          <p className="text-xs text-slate-400">Synced directly with verified Playwright submissions</p>
+          <p className="text-xs text-slate-400">Synced directly with verified submissions</p>
         </div>
         <span className="text-xs font-mono font-bold px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">
           Total Tracked: {applications.length}
         </span>
       </div>
 
-      {applications.length === 0 ? (
-        <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-          <i data-lucide="kanban" className="w-12 h-12 text-slate-600 mx-auto"></i>
-          <h4 className="font-bold text-sm text-white">No Verified Applications Tracked Yet</h4>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {applications.map(a => (
-            <div key={a.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    {a.status}
-                  </span>
-                  <h4 className="font-bold text-sm text-white mt-1.5">{a.title}</h4>
-                  <p className="text-xs text-slate-400">{a.company_name} • {a.location}</p>
-                </div>
-                <span className="text-xs font-bold text-blue-400 font-mono">ATS: {a.ats_score}</span>
+      <div className="grid grid-cols-2 gap-4">
+        {applications.map(a => (
+          <div key={a.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-3">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  {a.status}
+                </span>
+                <h4 className="font-bold text-sm text-white mt-1.5">{a.title}</h4>
+                <p className="text-xs text-slate-400">{a.company_name} • {a.location}</p>
               </div>
-              <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 underline block">View Original Job Posting ↗</a>
+              <span className="text-xs font-bold text-blue-400 font-mono">ATS: {a.ats_score}</span>
             </div>
-          ))}
-        </div>
-      )}
+            <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 underline block">View Original Job Posting ↗</a>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-/* ── 4. AUTOMATION CENTER VIEW (LIVE REAL-TIME EXECUTION LOG DASHBOARD) ─ */
+/* ── 4. AUTOMATION CENTER VIEW ──────────────────────────────────────── */
 function AutomationView({ liveLogs, agentRunning, handleToggleAgent, agentStatusText }) {
   return (
     <div className="space-y-6">
@@ -531,7 +515,6 @@ function AutomationView({ liveLogs, agentRunning, handleToggleAgent, agentStatus
         </div>
       </div>
 
-      {/* Big Agent Control Banner */}
       <div className="glass-card p-6 rounded-2xl border border-slate-800 flex justify-between items-center bg-slate-900/90">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -556,7 +539,6 @@ function AutomationView({ liveLogs, agentRunning, handleToggleAgent, agentStatus
         </button>
       </div>
 
-      {/* Live Terminal Log Console Stream */}
       <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-3">
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -587,36 +569,55 @@ function AutomationView({ liveLogs, agentRunning, handleToggleAgent, agentStatus
   );
 }
 
-function PipelineStep({ name, status, color }) {
-  return (
-    <div className="flex-1 bg-slate-900/90 p-4 rounded-xl border border-slate-800 text-center space-y-1">
-      <div className={`w-3 h-3 rounded-full ${color} mx-auto mb-2 animate-pulse`}></div>
-      <p className="text-xs font-bold text-white">{name}</p>
-      <p className="text-[10px] text-slate-400">{status}</p>
-    </div>
-  );
-}
-
-function PipelineConnector() {
-  return <div className="w-8 h-0.5 bg-slate-800"></div>;
-}
-
-/* ── 5. RECOVERY CENTER VIEW ────────────────────────────────────────── */
-function RecoveryView({ replayingId, setReplayingId }) {
+/* ── 5. RECOVERY CENTER VIEW (1-CLICK DIRECT APPLICATOR) ─────────────── */
+function RecoveryView({ recoveryItems }) {
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-display font-bold text-white">Recovery Center & Replay Engine</h2>
-        <p className="text-xs text-slate-400">Captures DOM HTML, error stack traces, and enables 1-Click application retries</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-display font-bold text-white">Recovery Center (CAPTCHA, Login & Manual Review Queue)</h2>
+          <p className="text-xs text-slate-400">Jobs that require candidate login or CAPTCHA solving are captured here for 1-Click completion</p>
+        </div>
+        <span className="text-xs font-mono font-bold px-3 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
+          Captured: {recoveryItems.length}
+        </span>
       </div>
 
-      <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-        <i data-lucide="shield-check" className="w-12 h-12 text-emerald-500 mx-auto"></i>
-        <h4 className="font-bold text-sm text-white">No Failed Application Snapshots</h4>
-        <p className="text-xs text-slate-400 max-w-md mx-auto">
-          All automation fillers are operating with zero DOM exception snapshots recorded.
-        </p>
-      </div>
+      {recoveryItems.length === 0 ? (
+        <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
+          <i data-lucide="shield-check" className="w-12 h-12 text-emerald-500 mx-auto"></i>
+          <h4 className="font-bold text-sm text-white">No Blocked Jobs in Recovery Center</h4>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {recoveryItems.map(item => (
+            <div key={item.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-3 hover:border-amber-500/40 transition-all">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold">
+                    {item.reason}
+                  </span>
+                  <h4 className="font-bold text-sm text-white mt-1.5">{item.title}</h4>
+                  <p className="text-xs text-slate-400">{item.company_name}</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
+                {item.details}
+              </p>
+
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full text-center py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center gap-2 shadow-lg transition-colors"
+              >
+                <span>Open Application Link & Complete Directly ↗</span>
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -630,29 +631,19 @@ function CompanyView({ companies }) {
         <p className="text-xs text-slate-400">Synthesizes tech stack, recent news, and tailored interview prep questions from Supabase</p>
       </div>
 
-      {companies.length === 0 ? (
-        <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-          <i data-lucide="building-2" className="w-12 h-12 text-slate-600 mx-auto"></i>
-          <h4 className="font-bold text-sm text-white">No Company Dossiers Generated Yet</h4>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Company dossiers are generated automatically when candidate applications progress or when CompanyIntelligenceAgent analyzes target employers in India.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {companies.map(c => (
-            <div key={c.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-2">
-              <h4 className="font-bold text-sm text-white">{c.name}</h4>
-              <p className="text-xs text-slate-400">{c.industry || 'Tech'} • {c.headquarters || 'India'}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-4">
+        {companies.map(c => (
+          <div key={c.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-2">
+            <h4 className="font-bold text-sm text-white">{c.name}</h4>
+            <p className="text-xs text-slate-400">{c.industry || 'Tech'} • {c.headquarters || 'India'}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-/* ── 7. RESUME STUDIO VIEW (DYNAMIC GROQ 70B AI TAILORING) ─────────── */
+/* ── 7. RESUME STUDIO VIEW ──────────────────────────────────────────── */
 function ResumeView() {
   const [tailoredRes, setTailoredRes] = useState(null);
   const [tailoring, setTailoring] = useState(false);
@@ -939,20 +930,6 @@ function AgentStatusRow({ name, status, time, icon, color }) {
       <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
         {status}
       </span>
-    </div>
-  );
-}
-
-function ProgressBar({ label, percent, color = "bg-blue-500" }) {
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-[11px]">
-        <span className="text-slate-300">{label}</span>
-        <span className="font-mono text-slate-400">{percent}%</span>
-      </div>
-      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-        <div className={`h-full ${color} rounded-full`} style={{ width: `${percent}%` }}></div>
-      </div>
     </div>
   );
 }
