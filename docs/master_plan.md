@@ -1,149 +1,107 @@
-# Master Implementation Plan & Architectural Roadmap
+# Helios: Autonomous AI Employee — Progress & Strategic Roadmap
 
-## Executive Summary & Product Vision
+## Product Vision: The Personal Autonomous Career Agent
 
-**Helios** is an end-to-end, enterprise-grade **AI Career Intelligence & Job Search Automation Platform**. It automates the complete candidate lifecycle:
-1. **Multi-Portal Ingestion**: Scrapes and fetches job postings continuously across public board APIs (Greenhouse, Lever, LinkedIn, Jobnet, Jobbank, Jobindex, Jobdanmark).
-2. **Normalized Intelligence Pipeline**: Cleans, deduplicates, resolves company profiles, computes vector embeddings, and ranks job matches against candidate profiles using `pgvector` and LLM scoring.
-3. **Generative Application Suite**: Automated tailoring of LaTeX CVs, customized cover letters, AI reviewer critique loops, interview preparation simulators, and skill gap learning plans.
-4. **CRM & Automated Tracking**: Kanban application pipeline, scheduled background execution, dead-letter queues, real-time telemetry, and multi-channel notifications (email, push, browser extension).
-
----
-
-## Deployed GitHub Repository
-
-- **Public Repository**: [https://github.com/vinaykhosya/helios](https://github.com/vinaykhosya/helios)
-- **License**: MIT
-- **Architecture**: Layered Monorepo (Python 3.11+ / Pydantic v2 / FastAPI / SQLAlchemy 2.0 / PostgreSQL 15 + pgvector / Redis / Next.js)
+Helios is pivoting from a passive job dashboard into a **Personal Autonomous AI Employee**. Helios operates silently in the background while you sleep:
+1. **Discovers**: Scans 100+ sources every 6 hours.
+2. **Filters (Quality First)**: Applies strict hard constraints (e.g., AI/Python roles, 0–3 yrs exp, minimum salary, no staffing agencies).
+3. **Ranks**: Computes 0–100% fit scores using `pgvector` + LLM evaluation.
+4. **Tailors**: Generates company-specific LaTeX PDFs for CV & cover letter.
+5. **Auto-Applies**: Uses Playwright browser automation to fill form portals (Greenhouse, Lever, Ashby, Workday).
+6. **Human-in-the-Loop**: Pauses ONLY for CAPTCHAs, OTPs, or custom questions, notifying you for 1-click approval.
+7. **Interview Concierge & Briefing**: Monitors inbox for interview invites, updates application CRM status, generates interview dossiers, and delivers a daily Morning Executive Briefing.
 
 ---
 
-## Architectural Overview & Component Map
+## Progress Assessment: Where We Stand Today
+
+### Overall Completion: ~35% Complete | ~65% Remaining
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            HELIOS PLATFORM                                  │
+│                            CURRENT COMPLETION                               │
 │                                                                             │
-│  ┌──────────────┐     ┌──────────────────────────────────────────────────┐  │
-│  │   Frontend   │     │                   Backend                        │  │
-│  │  (Next.js)   │◄───►│  ┌───────────┐   ┌────────────────────────────┐  │  │
-│  │  /dashboard  │     │  │    API    │   │         Services           │  │  │
-│  │  /jobs       │     │  │  Routes   │   │ JobService, ApplicationSvc │  │  │
-│  │  /applications     │  └─────┬─────┘   │ ResumeSvc, CompanySvc      │  │  │
-│  │  /analytics  │     │        │         └─────────────┬──────────────┘  │  │
-│  └──────────────┘     │  ┌─────▼──────┐                │                 │  │
-│                       │  │ Connectors │       ┌────────▼─────────────┐   │  │
-│                       │  │  Registry  │       │  Repositories (Async)│   │  │
-│                       │  └─────┬──────┘       └────────┬─────────────┘   │  │
-│                       └────────┼───────────────────────┼─────────────────┘  │
-│                                │                       │                    │
-│  ┌─────────────────────────────▼───────────────────────▼──────────────────┐ │
-│  │                     Intelligence & Pipeline                            │ │
-│  │                                                                        │ │
-│  │ Normalizer → Deduplicator → CompanyResolver → EmbeddingGenerator       │ │
-│  │ RankerStage → PersistenceStage                                         │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-│                                │                                            │
-│  ┌─────────────────────────────▼──────────────────────────────────────────┐ │
-│  │                         AI Layer                                       │ │
-│  │                                                                        │ │
-│  │ Providers: Anthropic Claude 3.5 / OpenAI GPT-4o / Ollama               │ │
-│  │ Engines: ResumeTailor | CoverLetter | Reviewer | InterviewPrep         │ │
-│  │          SkillGap | CareerAdvisor                                      │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-│                                │                                            │
-│  ┌─────────────────────────────▼──────────────────────────────────────────┐ │
-│  │                       Database Layer                                   │ │
-│  │                                                                        │ │
-│  │ PostgreSQL 15 + pgvector (18 Relational & Vector Tables)               │ │
-│  │ Jobs, Companies, Applications, Resumes, Cover Letters, Embeddings      │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
+│  Foundational Architecture & DB Schema ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 85%              │
+│  Discovery Agent (Connectors & Pipeline) ▓▓▓▓▓▓▓▓░░░░░░░░░░ 40%              │
+│  Matching & Resume Tailoring Engines    ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░ 50%              │
+│  Application Agent (Browser Auto-Fill)  ▓▓░░░░░░░░░░░░░░░░░ 10%              │
+│  Email Concierge & Morning Briefing    ▓▓░░░░░░░░░░░░░░░░░ 10%              │
+│                                                                             │
+│  TOTAL PROGRESS: 35% DONE | 65% REMAINING                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Detailed Progress Matrix & Phase Blueprint
+## Detailed Agent Breakdown
 
-### Phase 1: Foundational Architecture & Core Contracts ✅ COMPLETED
-- **Universal Models**: Implemented Pydantic v2 domain schemas (`Job`, `Company`, `Application`, `User`).
-- **Interfaces & Protocols**: Standardized `BaseConnector`, `BasePipelineStage`, `BaseAIEngine`, `BaseEventHandler`, and Repository Protocols.
-- **Event Bus System**: Built 12 strongly-typed domain events with strict `correlation_id` propagation for distributed tracing.
-- **Database Schema**: Authored `database/schema.sql` defining 18 PostgreSQL tables with `pgvector` HNSW indexes.
-- **Pipeline Architecture**: Defined 6-stage sequential ingestion pipeline with standard stage contracts.
-- **Connector Framework**: Built `ConnectorRegistry` and `ConnectorRunner` supporting circuit breakers, retries, and telemetry logging.
-- **Test Matrix**: Passed unit and integration suites (36 tests passing).
-
----
-
-### Phase 2: Persistence Layer & Backend API ⚙️ CURRENT IN PROGRESS
-- [x] **Repository Interfaces**: Defined async repository contracts in `core/interfaces/repository.py`.
-- [x] **Pipeline Stages**: Implemented `NormalizerStage`, `DeduplicatorStage`, `CompanyResolverStage`, and `PersistenceStage`.
-- [ ] **SQLAlchemy ORM Models**: Map 18 relational tables to `DeclarativeBase` ORM entities in `database/models/`.
-- [ ] **Alembic Migrations**: Configure `alembic/` for automatic schema migrations and revision histories.
-- [ ] **Concrete Repositories**: Implement `JobRepository`, `CompanyRepository`, `ApplicationRepository`, and `UserRepository` using SQLAlchemy AsyncSession.
-- [ ] **Service Layer**: Implement `JobService`, `CompanyService`, `ApplicationService`, and `ResumeService`.
-- [ ] **FastAPI Endpoints**: Build REST API routes (`/api/v1/jobs`, `/api/v1/applications`, `/api/v1/companies`, `/api/v1/health`).
+### Agent 1: Discovery Agent (Job Harvester)
+- **Status**: **40% Complete**
+- **Done**:
+  - `BaseConnector` contract & `ConnectorRegistry`.
+  - `GreenhouseConnector` & `LeverConnector` JSON adapters.
+  - Job search CLI toolset for Jobindex, Jobbank, Jobnet, LinkedIn.
+- **Remaining (60%)**:
+  - Connectors for Ashby, Workday, Wellfound, Naukri, and direct career pages.
+  - Continuous 6-hour scheduler daemon (`workers/ingestion_worker.py`).
 
 ---
 
-### Phase 3 & 4: Production Connector Suite & Asynchronous Queue 🔮 PLANNED
-- [ ] **Connector Implementations**:
-  - `GreenhouseConnector` (Public REST JSON API)
-  - `LeverConnector` (Lever Postings API)
-  - `LinkedInConnector`, `JobnetConnector`, `JobbankConnector`, `JobindexConnector`
-- [ ] **Resilient Queue Broker**: Integrate Redis + RQ / Arq for async worker job scheduling.
-- [ ] **Dead Letter Queue (DLQ)**: Routing failed payloads to `connector_errors` for inspection and automatic retry policies.
-- [ ] **Connector Health Metrics**: Dashboard telemetry for success rates, execution latencies, and error rates.
+### Agent 2: Matching Agent (Quality Matcher)
+- **Status**: **50% Complete**
+- **Done**:
+  - Universal `Job` domain schema & normalization pipeline (`NormalizerStage`, `DeduplicatorStage`, `CompanyResolverStage`).
+  - Strict rule model (`core/models/user.py`).
+- **Remaining (50%)**:
+  - Hard constraint rule filter (Salary, AI/Python, Exp 0–3 yrs, No staffing agencies).
+  - Vector embeddings (`pgvector`) & 0–100% LLM match scoring stage (`RankerStage`).
 
 ---
 
-### Phase 5 & 6: Embedding Generation, Vector Search & AI Job Ranking 🔮 PLANNED
-- [ ] **Embedding Pipeline**: Generate 1536-dim vector embeddings for jobs, companies, and candidate profiles via OpenAI / HuggingFace.
-- [ ] **pgvector Similarity Search**: HNSW cosine distance indexing for sub-second vector search.
-- [ ] **RankerStage Implementation**: Scoring algorithm evaluating technical skill overlap, domain relevance, experience alignment, and behavioral fit.
-- [ ] **Smart Deduplication**: Cross-portal fuzzy title + company + location deduplication.
+### Agent 3: Resume & Cover Letter Agent (ATS Tailor)
+- **Status**: **50% Complete**
+- **Done**:
+  - ModernCV LaTeX template & cover letter `cover.cls` template.
+  - CLI compilation workflows (`lualatex` / `xelatex`).
+- **Remaining (50%)**:
+  - Headless background PDF compilation service (`ResumeService`).
+  - Dynamic ATS keyword optimization per job description.
 
 ---
 
-### Phase 7: Generative AI Application Suite 🔮 PLANNED
-- [ ] **Resume Engine**: Tailor LaTeX ModernCV templates based on job requirements and verified candidate profiles.
-- [ ] **Cover Letter Engine**: Custom LaTeX `cover.cls` generation tailored to target company mission and role.
-- [ ] **Reviewer Engine**: Dual-agent critique loop evaluating output accuracy, page length constraints, and alignment.
-- [ ] **Interview Prep Simulator**: Interactive role-play simulator generating STAR-method talking points and interviewer questions.
-- [ ] **Skill Gap Analysis**: Automated gap detection producing personalized upskilling roadmaps.
+### Agent 4: Application Agent (Browser Auto-Filler & Human-in-the-Loop)
+- **Status**: **10% Complete** (Highest Priority Gap)
+- **Done**:
+  - Application CRM state machine & data models.
+- **Remaining (90%)**:
+  - Playwright / Chromium browser automation scripts for Greenhouse, Lever, Ashby, and Workday forms.
+  - Smart field auto-answer engine (work eligibility, notice period, expected salary, graduation year).
+  - CAPTCHA / OTP / Custom Question detection & pause trigger.
+  - Mobile/Desktop notification bot (Telegram/Email) with 1-click "Approve & Submit" trigger.
 
 ---
 
-### Phase 8 & 9: Modern Web Dashboard, CRM & Automation Extensions 🔮 PLANNED
-- [ ] **Frontend Application (Next.js App Router)**:
-  - **Kanban Board**: Drag-and-drop job application CRM (Wishlist -> Applied -> Interview -> Offer -> Rejected).
-  - **Jobs Explorer**: Dynamic search, filtering, and fit score visualization.
-  - **Live Resume Studio**: Side-by-side LaTeX code editor and PDF renderer.
-- [ ] **Background Automation**:
-  - APScheduler cron daemon for automated 6-hour job portal polling.
-  - SMTP Email notifications & Webhook alerts for top-scoring job matches.
-  - Chrome Extension for one-click job scraping from any web page.
+### Agent 5: Interview & Email Concierge Agent
+- **Status**: **10% Complete**
+- **Done**:
+  - Interview preparation prompt templates and STAR framework.
+- **Remaining (90%)**:
+  - Inbox scanner (Gmail/IMAP API) to detect application responses, OAs, and interview invites.
+  - Auto-generated STAR behavioral + technical interview briefing dossiers.
+  - Morning Executive Briefing generator ("Good morning Vinay...").
 
 ---
 
-## Verification & Testing Strategy
+## Revised Vertical Slice Execution Roadmap
 
-### Automated Verification
-1. **Unit & Integration Suite**:
-   ```bash
-   pytest
-   ```
-2. **Type Checking & Code Quality**:
-   ```bash
-   mypy core backend intelligence ai database workers
-   ruff check .
-   ```
-3. **Database Migration Verification**:
-   ```bash
-   alembic upgrade head
-   ```
-
-### Manual Verification
-- Deploy git updates to `https://github.com/vinaykhosya/helios`.
-- Swagger UI API validation at `http://localhost:8000/docs`.
+```
+Step 1: Hard Rules & Vector Ranker (Filter out 90% of noise)
+   ↓
+Step 2: Headless LaTeX PDF Generator (Generate targeted ATS CV)
+   ↓
+Step 3: Playwright Form Filler for Greenhouse & Lever (Auto-fill applications)
+   ↓
+Step 4: Human-in-the-Loop Pause & Telegram/Desktop Notification Bot
+   ↓
+Step 5: Morning Executive Briefing & Gmail Inbox Scanner
+```
