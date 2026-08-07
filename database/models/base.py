@@ -2,29 +2,30 @@
 database/models/base.py
 
 SQLAlchemy Declarative Base.
-All ORM model classes inherit from this base.
+All ORM model classes inherit from this base and default to the `helios` schema namespace.
 """
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import datetime
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import DateTime, func
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import MetaData
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.types import ARRAY
+
+# Default all ORM models to the `helios` schema namespace
+metadata_obj = MetaData(schema="helios")
 
 
 class Base(DeclarativeBase):
     """
-    Common base for all SQLAlchemy ORM models.
+    Common base for all SQLAlchemy ORM models under the `helios` schema.
     """
-    pass
+    metadata = metadata_obj
 
 
 # ── SQLite Compatibility Overrides ───────────────────────────────────────────
-import json
-import sqlite3
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.types import ARRAY
-
-# Teach sqlite3 how to serialize lists and dicts when binding parameters
 sqlite3.register_adapter(list, json.dumps)
 sqlite3.register_adapter(dict, json.dumps)
 
@@ -41,4 +42,3 @@ try:
         return "JSON"
 except ImportError:
     pass
-
