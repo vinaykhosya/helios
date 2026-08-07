@@ -72,7 +72,7 @@ function App() {
         }
       } catch (e) {
         console.error("API fetch error:", e);
-      } flex: {
+      } finally {
         setLoading(false);
       }
     }
