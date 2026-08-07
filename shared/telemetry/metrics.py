@@ -39,3 +39,28 @@ class MetricsCollector(Protocol):
 
 # Allow Optional without importing typing at call sites
 from typing import Optional  # noqa: E402
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+
+class HeliosSessionMetrics(BaseModel):
+    """
+    Tracks cycle and daily metrics for morning briefing reports and dashboard analytics.
+    """
+    session_id: str
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+
+    jobs_scanned: int = 0
+    jobs_eligible: int = 0
+    excellent_matches: int = 0
+
+    applied: int = 0
+    auto_applied: int = 0
+    awaiting_approval: int = 0
+    paused_captcha: int = 0
+    failed: int = 0
+
+    rejection_reasons: dict[str, int] = Field(default_factory=dict)
+    avg_application_time_seconds: float = 0.0
+

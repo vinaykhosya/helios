@@ -211,6 +211,66 @@
       "files": ["automation/notification.py"],
       "tests": ["tests/unit/automation/test_notification.py"],
       "done_when": ["Sends Telegram approval request with inline buttons", "Waits for user 1-click response"]
+    },
+    {
+      "id": "P7-M5-T1",
+      "title": "Implement LeverFormFiller Playwright automation",
+      "status": "completed",
+      "depends_on": ["P7-M1-T1"],
+      "estimated_hours": 5.0,
+      "files": ["automation/fillers/lever.py"],
+      "tests": ["tests/unit/automation/test_lever_filler.py"],
+      "done_when": ["Fills Lever form fields & uploads resume", "Raises PauseRequired on CAPTCHA/OTP"]
+    },
+    {
+      "id": "P7-M7-T1",
+      "title": "Implement ReplayEngine for 1-click application retry",
+      "status": "completed",
+      "depends_on": ["P7-M1-T1"],
+      "estimated_hours": 3.0,
+      "files": ["automation/replay.py"],
+      "tests": ["tests/unit/automation/test_replay.py"],
+      "done_when": ["Reloads RecoverySnapshot and retries Playwright form submission"]
+    },
+    {
+      "id": "P8-M1-T1",
+      "title": "Implement WorkflowOrchestrator event pipeline worker",
+      "status": "completed",
+      "depends_on": ["P4-M2-T1", "P7-M2-T1"],
+      "estimated_hours": 4.0,
+      "files": ["workers/orchestrator.py"],
+      "tests": ["tests/unit/workers/test_orchestrator.py"],
+      "done_when": ["Reacts to JobDiscovered events", "Emits JobRanked & ApplicationSubmitted events"]
+    },
+    {
+      "id": "P11-M1-T1",
+      "title": "Implement HeliosSessionMetrics telemetry store",
+      "status": "completed",
+      "depends_on": [],
+      "estimated_hours": 2.0,
+      "files": ["shared/telemetry/metrics.py"],
+      "tests": ["tests/unit/workers/test_briefing.py"],
+      "done_when": ["Tracks session metrics, jobs scanned, eligible count, rejection reasons"]
+    },
+    {
+      "id": "P11-M2-T1",
+      "title": "Implement MorningBriefingGenerator for Telegram",
+      "status": "completed",
+      "depends_on": ["P7-M4-T1", "P11-M1-T1"],
+      "estimated_hours": 2.0,
+      "files": ["workers/briefing.py"],
+      "tests": ["tests/unit/workers/test_briefing.py"],
+      "done_when": ["Formats executive daily briefing text with metrics and rejection breakdown"]
+    },
+    {
+      "id": "P12-M1-T1",
+      "title": "Implement CompanyIntelligenceAgent research & dossier",
+      "status": "completed",
+      "depends_on": [],
+      "estimated_hours": 4.0,
+      "files": ["ai/engines/company_intelligence.py"],
+      "tests": ["tests/unit/ai/engines/test_company_intelligence.py"],
+      "done_when": ["Generates CompanyDossier with tech stack, news, and custom interview questions"]
     }
   ]
 }
