@@ -8,12 +8,18 @@ and renders the Helios Mission Control Web Dashboard.
 from __future__ import annotations
 
 import os
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+# Add root directory to sys.path for serverless environments (Vercel)
+base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if base_dir not in sys.path:
+    sys.path.insert(0, base_dir)
 
 from backend.src.core.di import DIContainer
 from backend.src.api.jobs import router as jobs_router
@@ -22,12 +28,16 @@ from backend.src.api.companies import router as companies_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Manages application startup and shutdown events."""
-    # Initialize Dependency Injection container and DB connection pool
-    DIContainer.initialize()
+    """Manages application startup and shutdown events gracefully."""
+    try:
+        DIContainer.initialize()
+    except Exception as e:
+        print(f"Lifespan initialization warning: {e}")
     yield
-    # Cleanup database connection pool
-    await DIContainer.shutdown()
+    try:
+        await DIContainer.shutdown()
+    except Exception as e:
+        print(f"Lifespan shutdown warning: {e}")
 
 
 app = FastAPI(
@@ -37,7 +47,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for local development
+# Enable CORS for local and web production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -50,31 +60,51 @@ app.add_middleware(
 app.include_router(jobs_router)
 app.include_router(companies_router)
 
-# Mount static frontend assets if static directory exists
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Locate static directory
 static_dir = os.path.join(base_dir, "static")
 
+# Mount StaticFiles if folder exists
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-    @app.get("/", include_in_schema=False)
-    @app.get("/app", include_in_schema=False)
-    @app.get("/dashboard", include_in_schema=False)
-    @app.get("/jobs", include_in_schema=False)
-    @app.get("/applications", include_in_schema=False)
-    @app.get("/automation", include_in_schema=False)
-    @app.get("/recovery", include_in_schema=False)
-    @app.get("/company", include_in_schema=False)
-    @app.get("/resume", include_in_schema=False)
-    @app.get("/analytics", include_in_schema=False)
-    @app.get("/telegram", include_in_schema=False)
-    @app.get("/settings", include_in_schema=False)
-    async def serve_dashboard():
-        """Serves the Helios Mission Control Single-Page Application."""
-        return FileResponse(os.path.join(static_dir, "index.html"))
+
+def _get_static_content(filename: str) -> str:
+    """Helper to safely load static asset content with fallback."""
+    filepath = os.path.join(static_dir, filename)
+    if os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/app", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/jobs", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/applications", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/automation", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/recovery", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/company", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/resume", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/analytics", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/telegram", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/settings", response_class=HTMLResponse, include_in_schema=False)
+async def serve_dashboard():
+    """Serves the Helios Mission Control Single-Page Application."""
+    html_content = _get_static_content("index.html")
+    if not html_content:
+        return HTMLResponse("<html><body><h1>Helios Mission Control API Active</h1><p>Visit /health or /docs</p></body></html>")
+    return HTMLResponse(content=html_content)
+
+
+@app.get("/static/app.jsx", include_in_schema=False)
+async def serve_app_jsx():
+    """Serves the app.jsx bundle for Vercel Serverless."""
+    jsx_content = _get_static_content("app.jsx")
+    return Response(content=jsx_content, media_type="application/javascript")
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check() -> dict[str, str]:
-    """Liveness check for container orchestration and monitoring tools."""
+    """Liveness check for container orchestration and serverless monitoring."""
     return {"status": "healthy"}
