@@ -1,0 +1,102 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{utf8}
+\usepackage[margin=0.5in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+}
+
+\titleformat{\section}{\large\bfseries\uppercase}{}{0pt}{}[\titlerule]
+\titlespacing*{\section}{0pt}{8pt}{4pt}
+\setlist[itemize]{noitemsep, topsep=2pt, leftmargin=12pt}
+
+\pagestyle{empty}
+
+\begin{document}
+
+% ── HEADER ──────────────────────────────────────────────────────────────────
+\begin{center}
+    {\LARGE \bfseries Vinay Khosya}\\[3pt]
+    \small Software Engineer --- Backend Systems --- AI Infrastructure\\[3pt]
+    +91-9996303072 \quad$\cdot$\quad \href{mailto:vinay.khosya.ug23@nsut.ac.in}{vinay.khosya.ug23@nsut.ac.in} \quad$\cdot$\quad \href{https://github.com/vinaykhosya}{GitHub} \quad$\cdot$\quad \href{https://linkedin.com/in/vinaykhosya}{LinkedIn} \quad$\cdot$\quad \href{https://vinaykhosya.com}{Website}
+\end{center}
+
+% ── ENGINEERING HIGHLIGHTS ─────────────────────────────────────────────────
+\section{Engineering Highlights}
+\begin{itemize}
+    \item Built a production recruitment platform featuring authentication, RBAC, audit logging, payments, and resume builder using FastAPI, PostgreSQL, and Supabase.
+    \item Designed Genesis, a high-performance procedural world simulation engine with vectorized terrain generation, hydrology, and autonomous agents.
+    \item Delivered AI systems deployed across healthcare, cybersecurity, and industrial inspection environments.
+\end{itemize}
+
+% ── EDUCATION ───────────────────────────────────────────────────────────────
+\section{Education}
+\textbf{Netaji Subhas University of Technology (NSUT)} \hfill Delhi\\
+\textit{B.Tech in Artificial Intelligence and Machine Learning} \hfill 2023 -- 2027
+
+% ── EXPERIENCE ──────────────────────────────────────────────────────────────
+\section{Experience}
+
+\textbf{AI Systems Engineer} -- \textit{ElectraWireless} \hfill Remote\\
+\textit{Backend Systems \& AI Infrastructure} \hfill Jan 2026 -- Present
+\begin{itemize}
+    \item Developed FastAPI backend services powering healthcare AI inference pipelines.
+    \item Built scalable data processing workflows integrating AI models, databases, and sensor streams.
+    \item Improved production reliability by reducing pipeline failures by 30\%.
+\end{itemize}
+
+\textbf{AI Engineer} -- \textit{ThirdEye AI (JBM Group)} \hfill Gurugram\\
+\textit{Industrial AI Systems} \hfill Aug 2025 -- Dec 2025
+\begin{itemize}
+    \item Developed OCR and anomaly detection pipelines for industrial inspection.
+    \item Optimized ONNX inference pipelines reducing memory usage by 40\%.
+    \item Achieved inference latency below 50ms.
+\end{itemize}
+
+\textbf{Machine Learning Engineer} -- \textit{Gurugram Police Cyber Security Division} \hfill Gurugram\\
+\textit{Cybersecurity AI} \hfill Apr 2024 -- Jul 2024
+\begin{itemize}
+    \item Developed an offline Android malware detection system.
+    \item Built APK analysis pipelines processing 100,000+ applications.
+    \item Reduced inference time below 2 seconds.
+\end{itemize}
+
+% ── PROJECTS ────────────────────────────────────────────────────────────────
+\section{Projects}
+
+\textbf{Genesis -- High Performance World Simulation Engine} \hfill \textit{Python, NumPy}\\
+Built a procedural simulation engine featuring terrain generation, hydrology, settlement prediction, and autonomous memory-driven agents. Implemented vectorized computation, flood-fill hydrology, Euclidean Distance Transform, and optimized spatial algorithms.
+
+\vspace{3pt}
+\textbf{CrackNonTech Recruitment Platform} \hfill \textit{FastAPI, PostgreSQL, Supabase}\\
+Designed and engineered a recruitment ecosystem featuring authentication, RBAC, audit logging, payments, resume builder, and job management using scalable backend APIs.
+
+\vspace{3pt}
+\textbf{GuardEye -- Offline Android Malware Detection} \hfill \textit{Python, Machine Learning}\\
+Developed an offline malware detection system with optimized feature extraction and ML pipelines achieving below 2-second inference.
+
+% ── TECHNICAL SKILLS ────────────────────────────────────────────────────────
+\section{Technical Skills}
+\begin{itemize}[leftmargin=0pt, label={}]
+    \item \textbf{Languages:} Python, Java, C++, SQL
+    \item \textbf{Backend:} FastAPI, REST APIs, PostgreSQL, Supabase, SQLite, Redis
+    \item \textbf{AI/ML:} PyTorch, NumPy, OpenCV, ONNX
+    \item \textbf{Core CS:} Data Structures, Algorithms, OOP, Database Design, System Design
+    \item \textbf{Tools:} Git, Docker, Linux, VS Code
+\end{itemize}
+
+% ── ACHIEVEMENTS ────────────────────────────────────────────────────────────
+\section{Achievements}
+\begin{itemize}
+    \item Global AI Competition Rank 4 / 162,000+ participants
+    \item JEE 2023 AIR 3561
+    \item GuardEye deployed in Haryana Police cybersecurity workflows
+\end{itemize}
+
+\end{document}
