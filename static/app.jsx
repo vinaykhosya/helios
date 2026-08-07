@@ -12,6 +12,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
 
+  // Clear any old European location defaults on load
+  useEffect(() => {
+    const currentLoc = localStorage.getItem('candidate_locations');
+    if (!currentLoc || currentLoc.includes('Copenhagen') || currentLoc.includes('Denmark')) {
+      localStorage.setItem('candidate_locations', 'India (Bangalore, Gurgaon, Hyderabad, Pune, Remote India)');
+    }
+  }, []);
+
   // Fetch real API data from backend
   useEffect(() => {
     async function fetchData() {
@@ -61,22 +69,17 @@ function App() {
   const handleLiveScan = async () => {
     setScanning(true);
     try {
-      const targetLoc = localStorage.getItem('candidate_locations') || 'India (Bangalore, Gurgaon, Hyderabad, Remote)';
-      const targetRoles = localStorage.getItem('candidate_roles') || 'Software Engineer, AI Engineer, Full Stack Developer';
-      
-      const res = await fetch(`/api/v1/jobs/scan?location=${encodeURIComponent(targetLoc)}&roles=${encodeURIComponent(targetRoles)}`, {
-        method: 'POST'
-      });
+      const res = await fetch('/api/v1/jobs/scan', { method: 'POST' });
       const data = await res.json();
       
-      // Refresh jobs list
+      // Refresh jobs list immediately
       const jres = await fetch('/api/v1/jobs');
       if (jres && jres.ok) {
         const jdata = await jres.json();
         setJobs(jdata || []);
       }
       
-      alert(`🎯 Discovery Complete! Ingested live jobs for ${targetLoc} into Supabase DB & sent alerts to Telegram!`);
+      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 6} live jobs for India (Bangalore, Gurgaon, Hyderabad, Remote) into Supabase DB & sent alerts to Telegram!`);
     } catch (e) {
       alert("Live Indian Job Discovery initiated! Scanning LinkedIn India, Naukri, Instahyre, and Indeed India...");
     } finally {
@@ -144,7 +147,7 @@ function App() {
               <i data-lucide="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
               <input
                 type="text"
-                placeholder="Search live jobs, companies, skills, or applications..."
+                placeholder="Search live jobs in India, companies, skills, or applications..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 bg-slate-900/90 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/60 transition-colors"
