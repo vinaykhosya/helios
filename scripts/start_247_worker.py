@@ -2,11 +2,11 @@
 scripts/start_247_worker.py
 
 24/7 Autonomous Job Application Worker for Vinay Khosya.
-- Scans Pan-India & Remote jobs continuously.
+- Scans Pan-India & Remote jobs continuously (LinkedIn, Naukri, Indeed, Instahyre).
 - Tailors master LaTeX resume for 95%+ ATS match score.
 - Fills out application forms using Playwright and storage_state.json.
-- Sends DOM screenshots of every submitted application directly to Telegram.
-- Sends urgent Telegram alerts if a CAPTCHA or human intervention is detected.
+- Runs Strict Post-Submission DOM Verification (verifier.py) to prevent false 'Applied' statuses!
+- Sends DOM screenshots and Telegram alerts matching exact verification states.
 """
 import sys
 import os
@@ -22,6 +22,7 @@ if base_dir not in sys.path:
 from playwright.async_api import async_playwright
 from backend.src.services.resume_service import ResumeService
 from backend.src.services.telegram_service import TelegramService
+from automation.verifier import verify_post_submission_state
 
 telegram = TelegramService()
 resume_service = ResumeService(template_path="templates/master_resume.tex")
@@ -69,19 +70,37 @@ async def process_job_application(job: dict):
             await page.goto(apply_url, timeout=25000, wait_until="domcontentloaded")
             await page.wait_for_timeout(2000)
 
-            # Check CAPTCHA
-            captcha_elems = await page.query_selector_all("iframe[src*='recaptcha'], iframe[src*='hcaptcha'], .g-recaptcha")
-            if captcha_elems:
-                captcha_img = os.path.join(base_dir, f"captcha_{company.replace(' ', '_')}.png")
-                await page.screenshot(path=captcha_img)
-                caption = f"⚠️ <b>CAPTCHA Detected for {title} at {company}!</b>\n\nPlease log in or solve CAPTCHA in browser.\nURL: {apply_url}"
-                await telegram.send_screenshot(captcha_img, caption)
-                print(f"[!] CAPTCHA Alert Sent to Telegram for {company}")
+            # Step 3: Run Strict DOM Verification Strategy
+            v_res = await verify_post_submission_state(page)
+
+            if v_res.status_code == "FAILED_404":
+                await page.screenshot(path=screenshot_path)
+                caption = (
+                    f"⚠️ <b>Job Board Link Expired / 404</b>\n\n"
+                    f"• <b>Position</b>: {title}\n"
+                    f"• <b>Company</b>: {company}\n"
+                    f"• <b>Status</b>: <i>Not Counted as Applied</i>\n"
+                    f"🔗 <a href='{apply_url}'>View Posting</a>"
+                )
+                telegram.send_screenshot(screenshot_path, caption)
+                print(f"[!] Job Board 404 for {company} - Flagged in Recovery Center (Not Applied)")
                 await browser.close()
                 return
 
-            # Fill Candidate Details
-            await fill_field(page, ["#first_name", "input[name*='first_name']"], "Vinay")
+            if v_res.status_code == "PAUSED_CAPTCHA":
+                await page.screenshot(path=screenshot_path)
+                caption = (
+                    f"⚠️ <b>CAPTCHA Challenge Detected for {title} at {company}!</b>\n\n"
+                    f"Please solve CAPTCHA in browser to complete submission.\n"
+                    f"URL: {apply_url}"
+                )
+                telegram.send_screenshot(screenshot_path, caption)
+                print(f"[!] CAPTCHA Challenge Alert Sent for {company}")
+                await browser.close()
+                return
+
+            # Fill Form Fields
+            await fill_field(page, ["#first_name", "input[name*='first_name']", "input[name='name']"], "Vinay")
             await fill_field(page, ["#last_name", "input[name*='last_name']"], "Khosya")
             await fill_field(page, ["#email", "input[name*='email']"], "vinay.khosya.ug23@nsut.ac.in")
             await fill_field(page, ["#phone", "input[name*='phone']"], "+919996303072")
@@ -91,27 +110,30 @@ async def process_job_application(job: dict):
             if file_inputs:
                 await file_inputs[0].set_input_files(resume_pdf_path)
 
-            # Take screenshot of completed application form
             await page.screenshot(path=screenshot_path)
 
-            # Send Telegram Confirmation with Screenshot
+            # Verification Check Post-Fill
+            v_res_final = await verify_post_submission_state(page)
+            
+            if v_res_final.is_success:
+                status_label = "✅ <b>VERIFIED SUBMITTED & REGISTERED!</b>"
+            else:
+                status_label = "📋 <b>FORM FILLED & PREPARED!</b> (Pending Final Confirmation Click)"
+
             caption = (
-                f"✅ <b>Successfully Applied!</b>\n\n"
+                f"{status_label}\n\n"
                 f"• <b>Position</b>: {title}\n"
                 f"• <b>Company</b>: {company}\n"
                 f"• <b>Location</b>: {location}\n"
                 f"• <b>ATS Match Score</b>: <b>{ats_score}%</b>\n"
-                f"• <b>Keywords Aligned</b>: {', '.join(tailored.get('matched_keywords', []))}\n\n"
+                f"• <b>Verification Note</b>: {v_res_final.reason}\n\n"
                 f"🔗 <a href='{apply_url}'>View Job Posting</a>"
             )
-            await telegram.send_screenshot(screenshot_path, caption)
-            print(f"[+] Telegram Screenshot Alert Dispatched for {company}!")
+            telegram.send_screenshot(screenshot_path, caption)
+            print(f"[+] DOM Verification Completed for {company}: {v_res_final.status_code}")
 
         except Exception as e:
-            # Send status update
-            caption = f"✅ <b>Application Tracked for {title} at {company}</b> ({location})\n\nATS Score: <b>{ats_score}%</b>\nURL: {apply_url}"
-            await telegram.send_message(caption)
-            print(f"[+] Application Tracked for {company}: {e}")
+            print(f"[-] Execution Notice for {company}: {e}")
 
         await browser.close()
 
@@ -121,23 +143,11 @@ async def run_247_loop():
     print("[+] HELIOS 24/7 AUTONOMOUS JOB APPLICATION WORKER STARTED")
     print("=" * 70)
     
-    # Load Pan-India dataset
-    jobs_file = os.path.join(base_dir, "backend", "src", "api", "jobs.py")
     from backend.src.api.jobs import LARGE_PAN_INDIA_JOBS
 
-    # Initial Welcome Telegram Message
-    await telegram.send_message(
-        "🚀 <b>Helios 24/7 Autonomous Job Application Engine Active!</b>\n\n"
-        "• Target Candidate: <b>Vinay Khosya</b> (NSUT Delhi - AI/ML)\n"
-        "• Target Locations: <b>Pan-India & Remote</b>\n"
-        "• ATS Tailoring: <b>Groq Llama 3.3 70B Active</b>\n"
-        "• Screenshots: <b>Enabled for Every Application</b>\n\n"
-        "Applications will run continuously. You will receive Telegram alerts & DOM screenshots for every submitted job!"
-    )
-
-    for job in LARGE_PAN_INDIA_JOBS[:4]:
+    for job in LARGE_PAN_INDIA_JOBS[:3]:
         await process_job_application(job)
-        await asyncio.sleep(3)  # Throttling delay
+        await asyncio.sleep(2)
 
     print("=" * 70)
     print("[+] 24/7 WORKER RUN COMPLETED SUCCESSFULLY!")
