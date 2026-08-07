@@ -1,107 +1,88 @@
-# Helios: Autonomous AI Employee — Progress & Strategic Roadmap
+# Helios: Personal Autonomous AI Career Agent (v2.0)
 
-## Product Vision: The Personal Autonomous Career Agent
+## Product Vision: Closed-Loop AI Employee
 
-Helios is pivoting from a passive job dashboard into a **Personal Autonomous AI Employee**. Helios operates silently in the background while you sleep:
-1. **Discovers**: Scans 100+ sources every 6 hours.
-2. **Filters (Quality First)**: Applies strict hard constraints (e.g., AI/Python roles, 0–3 yrs exp, minimum salary, no staffing agencies).
-3. **Ranks**: Computes 0–100% fit scores using `pgvector` + LLM evaluation.
-4. **Tailors**: Generates company-specific LaTeX PDFs for CV & cover letter.
-5. **Auto-Applies**: Uses Playwright browser automation to fill form portals (Greenhouse, Lever, Ashby, Workday).
-6. **Human-in-the-Loop**: Pauses ONLY for CAPTCHAs, OTPs, or custom questions, notifying you for 1-click approval.
-7. **Interview Concierge & Briefing**: Monitors inbox for interview invites, updates application CRM status, generates interview dossiers, and delivers a daily Morning Executive Briefing.
+Helios is a **Personal Autonomous AI Career Agent** that acts as your dedicated job-hunting employee. It runs continuously, learns from every application attempt, and optimizes job search efficiency through a closed learning loop:
+
+```
+                          ┌───────────────────────────┐
+                          │       Memory Agent        │
+                          │ (History, Learnings, ATS) │
+                          └─────────────┬─────────────┘
+                                        │
+                                        ▼
+┌───────────────────┐        ┌────────────────────┐        ┌──────────────────┐
+│  Discovery Agent  │───────►│  Filtering Agent   │───────►│  Ranking Agent   │
+│ (Greenhouse,Lever,│        │ (Hard Rules &      │        │ (Skill Vectors & │
+│  Ashby, Workday)  │        │  Rejection Logs)   │        │  Missing Skills) │
+└───────────────────┘        └────────────────────┘        └────────┬─────────┘
+                                                                    │
+                                                                    ▼
+┌───────────────────┐        ┌────────────────────┐        ┌──────────────────┐
+│  Interview Agent  │◄───────│  Tracking Agent    │◄───────│ Application Agent│
+│ (STAR Prep &      │        │ (Inbox & Status    │        │ (Playwright &    │
+│  Dossiers)        │        │  CRM Sync)         │        │  Confidence Engine│
+└───────────────────┘        └────────────────────┘        └──────────────────┘
+```
 
 ---
 
-## Progress Assessment: Where We Stand Today
+## Key Innovations in Architecture
 
-### Overall Completion: ~35% Complete | ~65% Remaining
+### 1. Memory Agent (The Central Brain)
+- Remembers previously applied jobs to ensure zero duplicate applications.
+- Stores historical answers to portal questions (e.g. sponsorship, notice period, salary expectations).
+- Tracks resume version performance and company-specific interview feedback.
+- Learns ATS-specific quirks (e.g., Workday form structure, Greenhouse success rate).
+
+### 2. Confidence-Driven Automation Engine
+- **Confidence ≥ 95%**: **Auto-Apply** (High match, standard ATS form, straightforward questions).
+- **Confidence 80–94%**: **Ask User** (Sends Telegram/Desktop alert with 1-click "Approve & Submit").
+- **Confidence < 80%**: **Needs Review** (Pushes to manual review queue with highlighted gaps).
+
+### 3. Smarter Match Vector Breakdown & Missing Skill Alert
+Rather than a single opaque score, the Ranking Agent outputs:
+- **Overall Match**: `89%`
+- **Sub-Score Breakdown**:
+  - Python: `95%` | Backend Architecture: `91%` | LLMs: `87%` | Experience: `84%` | Location: `100%`
+- **Missing Skills / Keywords**: `Docker`, `Redis` (Instantly flags skills to highlight in CV or upskill).
+
+### 4. Opportunity Discovery & Rejection Transparency
+Full visibility into filtered jobs to build system trust:
+- `Found`: 127 jobs → `Rejected`: 109 → `Possible`: 14 → `Excellent Matches`: 4
+- **Rejection Log**: "Rejected Job #482 because: Experience > 5 yrs, Requires US Citizenship, PHP role".
+
+### 5. Focused ATS Core (Top 4 Tech Platforms)
+Prioritize deep, reliable integration with the top 4 ATS platforms:
+- **Greenhouse**
+- **Lever**
+- **Ashby**
+- **Workday**
+
+---
+
+## Progress Assessment & MV-Agent Milestone
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            CURRENT COMPLETION                               │
+│                       PROGRESS TOWARD MV-AGENT SLICE                        │
 │                                                                             │
 │  Foundational Architecture & DB Schema ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 85%              │
-│  Discovery Agent (Connectors & Pipeline) ▓▓▓▓▓▓▓▓░░░░░░░░░░ 40%              │
-│  Matching & Resume Tailoring Engines    ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░ 50%              │
-│  Application Agent (Browser Auto-Fill)  ▓▓░░░░░░░░░░░░░░░░░ 10%              │
-│  Email Concierge & Morning Briefing    ▓▓░░░░░░░░░░░░░░░░░ 10%              │
+│  Targeted ATS Connectors (Greenhouse/Lever) ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 60%           │
+│  Resume Tailoring & LaTeX PDF Compiler ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░ 60%             │
+│  Playwright Form Auto-Filler           ▓▓░░░░░░░░░░░░░░░░░░ 10%             │
+│  Memory Agent & Confidence Engine      ▓▓▓▓░░░░░░░░░░░░░░░░ 20%             │
 │                                                                             │
-│  TOTAL PROGRESS: 35% DONE | 65% REMAINING                                  │
+│  PROGRESS TOWARD CORE WORKFLOW SLICE: ~50% DONE | ~50% REMAINING            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Detailed Agent Breakdown
+## Action Plan: Building the MV-Agent Vertical Slice
 
-### Agent 1: Discovery Agent (Job Harvester)
-- **Status**: **40% Complete**
-- **Done**:
-  - `BaseConnector` contract & `ConnectorRegistry`.
-  - `GreenhouseConnector` & `LeverConnector` JSON adapters.
-  - Job search CLI toolset for Jobindex, Jobbank, Jobnet, LinkedIn.
-- **Remaining (60%)**:
-  - Connectors for Ashby, Workday, Wellfound, Naukri, and direct career pages.
-  - Continuous 6-hour scheduler daemon (`workers/ingestion_worker.py`).
-
----
-
-### Agent 2: Matching Agent (Quality Matcher)
-- **Status**: **50% Complete**
-- **Done**:
-  - Universal `Job` domain schema & normalization pipeline (`NormalizerStage`, `DeduplicatorStage`, `CompanyResolverStage`).
-  - Strict rule model (`core/models/user.py`).
-- **Remaining (50%)**:
-  - Hard constraint rule filter (Salary, AI/Python, Exp 0–3 yrs, No staffing agencies).
-  - Vector embeddings (`pgvector`) & 0–100% LLM match scoring stage (`RankerStage`).
-
----
-
-### Agent 3: Resume & Cover Letter Agent (ATS Tailor)
-- **Status**: **50% Complete**
-- **Done**:
-  - ModernCV LaTeX template & cover letter `cover.cls` template.
-  - CLI compilation workflows (`lualatex` / `xelatex`).
-- **Remaining (50%)**:
-  - Headless background PDF compilation service (`ResumeService`).
-  - Dynamic ATS keyword optimization per job description.
-
----
-
-### Agent 4: Application Agent (Browser Auto-Filler & Human-in-the-Loop)
-- **Status**: **10% Complete** (Highest Priority Gap)
-- **Done**:
-  - Application CRM state machine & data models.
-- **Remaining (90%)**:
-  - Playwright / Chromium browser automation scripts for Greenhouse, Lever, Ashby, and Workday forms.
-  - Smart field auto-answer engine (work eligibility, notice period, expected salary, graduation year).
-  - CAPTCHA / OTP / Custom Question detection & pause trigger.
-  - Mobile/Desktop notification bot (Telegram/Email) with 1-click "Approve & Submit" trigger.
-
----
-
-### Agent 5: Interview & Email Concierge Agent
-- **Status**: **10% Complete**
-- **Done**:
-  - Interview preparation prompt templates and STAR framework.
-- **Remaining (90%)**:
-  - Inbox scanner (Gmail/IMAP API) to detect application responses, OAs, and interview invites.
-  - Auto-generated STAR behavioral + technical interview briefing dossiers.
-  - Morning Executive Briefing generator ("Good morning Vinay...").
-
----
-
-## Revised Vertical Slice Execution Roadmap
-
-```
-Step 1: Hard Rules & Vector Ranker (Filter out 90% of noise)
-   ↓
-Step 2: Headless LaTeX PDF Generator (Generate targeted ATS CV)
-   ↓
-Step 3: Playwright Form Filler for Greenhouse & Lever (Auto-fill applications)
-   ↓
-Step 4: Human-in-the-Loop Pause & Telegram/Desktop Notification Bot
-   ↓
-Step 5: Morning Executive Briefing & Gmail Inbox Scanner
-```
+1. **Step 1**: Finalize Greenhouse + Lever JD extractor & Hard Rule Rejection Filter.
+2. **Step 2**: Implement Smarter Match Agent (Skill vectors + Missing skill detection).
+3. **Step 3**: Headless LaTeX PDF generator for targeted ATS resume & cover letter.
+4. **Step 4**: Playwright browser automation agent for Greenhouse & Lever form auto-fill.
+5. **Step 5**: Confidence engine + Telegram notification bot for 1-click human approval.
