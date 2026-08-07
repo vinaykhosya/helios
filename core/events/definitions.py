@@ -117,6 +117,46 @@ class ApplicationStatusChanged(HeliosEvent):
     new_status: str
 
 
+class ApplicationSubmitted(HeliosEvent):
+    """
+    Fired when an application form is auto-filled or submitted successfully.
+    Subscribers: MemoryService, NotificationWorker, MetricsWorker.
+    """
+    app_id: str
+    user_id: str
+    job_id: str
+    source: str
+    confirmation_id: Optional[str] = None
+    confidence_score: float = 1.0
+    resume_version: Optional[str] = None
+
+
+class ApplicationFailed(HeliosEvent):
+    """
+    Fired when an application attempt fails or errors out.
+    Subscribers: RecoveryEngine, DeadLetterQueue, MonitoringWorker.
+    """
+    app_id: str
+    user_id: str
+    job_id: str
+    source: str
+    error: str
+    dom_snapshot_path: Optional[str] = None
+
+
+class HumanApprovalRequested(HeliosEvent):
+    """
+    Fired when automation pauses for human verification, CAPTCHA, or custom questions.
+    Subscribers: TelegramNotifier, MobilePushWorker.
+    """
+    pending_id: str
+    job_id: str
+    user_id: str
+    pause_reason: str
+    confidence_score: float
+
+
+
 # ── Connector / Pipeline Lifecycle ────────────────────────────────────────────
 
 class ConnectorRunStarted(HeliosEvent):
