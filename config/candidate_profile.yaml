@@ -1,0 +1,48 @@
+# Candidate Profile Configuration for Helios
+name: "Vinay Khosya"
+email: "vinay@example.com"
+phone: "+91 98765 43210"
+location: "India"
+willing_to_relocate: true
+requires_sponsorship: false
+graduation_year: 2025
+years_of_experience: 0.5
+
+# Hard Eligibility Constraints
+min_salary: 600000
+max_experience_years: 3.0
+required_tech_stack:
+  - "Python"
+excluded_keywords:
+  - "PHP"
+  - "Sales"
+  - "Staffing"
+  - "Unpaid"
+target_locations:
+  - "India"
+  - "Remote"
+excluded_companies:
+  - "BadCompanyInc"
+job_types:
+  - "full_time"
+
+# Profile Intelligence & Resume Bullets
+experience_bullets:
+  - "Engineered multi-agent AI systems with Python, PyTorch, and FastAPI achieving 95%+ accuracy."
+  - "Built event-driven backend services with SQLAlchemy, PostgreSQL, and Redis handling asynchronous workloads."
+  - "Automated end-to-end data ingestion pipelines with pydantic schemas, pgvector embeddings, and Docker containerization."
+education_summary: "B.Tech in Computer Science / AI (2021-2025)"
+
+# Soft Preferences (Ranking)
+preferred_company_sizes:
+  - "startup"
+  - "mid_size"
+preferred_industries:
+  - "AI"
+  - "FinTech"
+  - "SaaS"
+ideal_role_keywords:
+  - "AI Engineer"
+  - "Backend Engineer"
+  - "Machine Learning Engineer"
+  - "LLM Developer"

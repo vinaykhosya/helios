@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 intelligence/pipeline/stages.py
 
@@ -25,15 +27,18 @@ Pipeline definition:
 Implementation phases:
   Phase 1: These contracts only.
   Phase 2: PersistenceStage (requires DB).
-  Phase 3: NormalizerStage, DeduplicatorStage, CompanyResolverStage.
-  Phase 4: EmbeddingGeneratorStage, RankerStage.
 """
-from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+
 
 from core.interfaces.pipeline_stage import BasePipelineStage
 from core.interfaces.repository import JobRepository, CompanyRepository
 from core.models.job import Job
 from core.models.company import Company
+
+if TYPE_CHECKING:
+    from intelligence.ranking.ranker import RankingAgent
+
 
 
 from core.interfaces.idempotency import IdempotencyStrategy, SourceUpdatedIdempotencyStrategy
@@ -177,27 +182,31 @@ class EmbeddingGeneratorStage(BasePipelineStage):
 
 class RankerStage(BasePipelineStage):
     """
-    Stage 5 — Score each job against all active user profiles.
-
-    Ranking is not purely AI. It combines:
-      - Vector similarity: cosine(job_embedding, user_embedding) → base score
-      - Rule-based boosts:
-          +0.10 if job.city matches user.target_locations
-          +0.05 if job.remote matches user.settings.preferred_remote
-          +0.05 if seniority aligns with profile experience level
-      - LLM re-ranking for top candidates (Phase 4+, expensive — apply sparingly)
-
-    Output:
-      - Sets job.fit_score per user (stored in a user_job_scores join table).
-      - Fires JobRanked event for scores ≥ user notification threshold.
-
-    Phase 4 implementation.
+    Stage 5 — Score each job against candidate profile using RankingAgent.
     """
 
     name = "ranker"
 
+    def __init__(self, ranking_agent: Optional[RankingAgent] = None):
+        if ranking_agent is None:
+            from core.config.profile_loader import load_candidate_profile
+            from intelligence.ranking.ranker import RankingAgent
+            profile = load_candidate_profile()
+            ranking_agent = RankingAgent(profile)
+        self._ranking_agent = ranking_agent
+
     async def process(self, jobs: list[Job]) -> list[Job]:
-        raise NotImplementedError("RankerStage is implemented in Phase 4.")
+        ranked_jobs = []
+        for job in jobs:
+            try:
+                res = self._ranking_agent.rank(job)
+                updated = job.model_copy(update={"fit_score": res.overall_score})
+                ranked_jobs.append(updated)
+            except Exception as e:
+                print(f"RankerStage error on job '{job.title}': {e}")
+                ranked_jobs.append(job)
+        return ranked_jobs
+
 
 
 

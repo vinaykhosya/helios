@@ -29,12 +29,13 @@ from intelligence.pipeline.stages import (
 class TestPipelineContracts:
     """Verifies that Phase 1 stages are contracts only — no premature implementations."""
 
-    @pytest.mark.parametrize("StageClass", [s for s in INGESTION_PIPELINE if s not in (PersistenceStage, CompanyResolverStage, DeduplicatorStage, NormalizerStage)])
+    @pytest.mark.parametrize("StageClass", [s for s in INGESTION_PIPELINE if s not in (PersistenceStage, CompanyResolverStage, DeduplicatorStage, NormalizerStage, RankerStage)])
     @pytest.mark.asyncio
     async def test_stage_raises_not_implemented(self, StageClass):
         stage = StageClass()
         with pytest.raises(NotImplementedError):
             await stage.process([])
+
 
     def test_pipeline_order(self):
         """Pipeline stage order is architecture — verify it matches the ADR."""

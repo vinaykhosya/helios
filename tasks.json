@@ -1,0 +1,216 @@
+{
+  "project": "Helios v3.0",
+  "version": "3.0.0",
+  "tasks": [
+    {
+      "id": "P1-M1-T1",
+      "title": "Verify Base ORM model",
+      "status": "completed",
+      "depends_on": [],
+      "estimated_hours": 0.5,
+      "files": ["database/models/base.py"],
+      "tests": ["tests/unit/database/test_base_orm.py"],
+      "done_when": ["Base model inherits from DeclarativeBase", "SQLite compatibility hooks work"]
+    },
+    {
+      "id": "P1-M1-T2",
+      "title": "User ORM model",
+      "status": "completed",
+      "depends_on": ["P1-M1-T1"],
+      "estimated_hours": 1.0,
+      "files": ["database/models/user.py"],
+      "tests": ["tests/unit/database/test_user_orm.py"],
+      "done_when": ["UserORM maps users table", "All fields match schema.sql"]
+    },
+    {
+      "id": "P1-M1-T3",
+      "title": "Company ORM model",
+      "status": "completed",
+      "depends_on": ["P1-M1-T1"],
+      "estimated_hours": 1.0,
+      "files": ["database/models/company.py"],
+      "tests": ["tests/unit/database/test_company_orm.py"],
+      "done_when": ["CompanyORM maps companies table", "Normalized name unique constraint works"]
+    },
+    {
+      "id": "P1-M1-T4",
+      "title": "Job ORM model",
+      "status": "completed",
+      "depends_on": ["P1-M1-T1", "P1-M1-T3"],
+      "estimated_hours": 1.5,
+      "files": ["database/models/job.py"],
+      "tests": ["tests/unit/database/test_job_orm.py"],
+      "done_when": ["JobORM maps jobs table", "Source + Source_ID unique constraint present"]
+    },
+    {
+      "id": "P1-M1-T5",
+      "title": "Application ORM model",
+      "status": "completed",
+      "depends_on": ["P1-M1-T2", "P1-M1-T4"],
+      "estimated_hours": 1.0,
+      "files": ["database/models/application.py"],
+      "tests": ["tests/unit/database/test_application_orm.py"],
+      "done_when": ["ApplicationORM maps applications table", "Foreign keys setup correctly"]
+    },
+    {
+      "id": "P3-M1-T1",
+      "title": "Create CandidateProfile Pydantic model",
+      "status": "completed",
+      "depends_on": [],
+      "estimated_hours": 1.0,
+      "files": ["core/models/candidate_profile.py"],
+      "tests": ["tests/unit/core/models/test_candidate_profile.py"],
+      "done_when": ["CandidateProfile class exists", "Imports without errors", "Unit tests pass"]
+    },
+    {
+      "id": "P3-M1-T2",
+      "title": "Create YAML Profile loader",
+      "status": "completed",
+      "depends_on": ["P3-M1-T1"],
+      "estimated_hours": 1.0,
+      "files": ["core/config/profile_loader.py", "config/candidate_profile.yaml"],
+      "tests": ["tests/unit/core/config/test_profile_loader.py"],
+      "done_when": ["YAML loader loads valid CandidateProfile", "Default config provided"]
+    },
+    {
+      "id": "P3-M2-T1",
+      "title": "Implement EligibilityGate with 7 hard rules",
+      "status": "completed",
+      "depends_on": ["P3-M1-T1"],
+      "estimated_hours": 3.0,
+      "files": ["intelligence/ranking/eligibility.py"],
+      "tests": ["tests/unit/intelligence/ranking/test_eligibility.py"],
+      "done_when": ["All 7 hard rules pass unit tests", "Zero LLM calls", "Fast binary pass/fail"]
+    },
+    {
+      "id": "P3-M2-T2",
+      "title": "Implement Batch Eligibility filter & Rejection logger",
+      "status": "completed",
+      "depends_on": ["P3-M2-T1"],
+      "estimated_hours": 1.5,
+      "files": ["intelligence/ranking/eligibility.py"],
+      "tests": ["tests/unit/intelligence/ranking/test_eligibility.py"],
+      "done_when": ["filter_batch processes 1000 jobs in < 1 sec", "Rejection stats calculated correctly"]
+    },
+    {
+      "id": "P4-M1-T1",
+      "title": "Implement SkillExtractor",
+      "status": "completed",
+      "depends_on": ["P3-M1-T1"],
+      "estimated_hours": 2.0,
+      "files": ["intelligence/ranking/skill_extractor.py"],
+      "tests": ["tests/unit/intelligence/ranking/test_skill_extractor.py"],
+      "done_when": ["Extracts tech skills from title & description", "Extracts skills from CandidateProfile"]
+    },
+    {
+      "id": "P4-M1-T2",
+      "title": "Implement SkillMatchScorer",
+      "status": "completed",
+      "depends_on": ["P4-M1-T1"],
+      "estimated_hours": 1.5,
+      "files": ["intelligence/ranking/skill_match_scorer.py"],
+      "tests": ["tests/unit/intelligence/ranking/test_skill_match_scorer.py"],
+      "done_when": ["Calculates match score & missing skills", "Produces breakdown dictionary"]
+    },
+    {
+      "id": "P4-M2-T1",
+      "title": "Implement RankingAgent multi-dimensional scorer",
+      "status": "completed",
+      "depends_on": ["P4-M1-T2"],
+      "estimated_hours": 3.0,
+      "files": ["intelligence/ranking/ranker.py"],
+      "tests": ["tests/unit/intelligence/ranking/test_ranker.py"],
+      "done_when": ["Scores tech stack, location, experience & keywords", "Computes recommendation confidence"]
+    },
+    {
+      "id": "P5-M1-T1",
+      "title": "Define MemoryService interface & schema",
+      "status": "completed",
+      "depends_on": [],
+      "estimated_hours": 1.5,
+      "files": ["ai/memory/service.py"],
+      "tests": ["tests/unit/ai/memory/test_memory_service.py"],
+      "done_when": ["MemoryService class defined with Redis + DB connections", "Abstract methods declared"]
+    },
+    {
+      "id": "P5-M1-T2",
+      "title": "Implement has_applied with Redis cache",
+      "status": "completed",
+      "depends_on": ["P5-M1-T1"],
+      "estimated_hours": 2.0,
+      "files": ["ai/memory/service.py"],
+      "tests": ["tests/unit/ai/memory/test_memory_service.py"],
+      "done_when": ["Checks Redis cache first", "Falls back to DB repository", "Warms Redis cache on hit"]
+    },
+    {
+      "id": "P6-M1-T1",
+      "title": "Implement ProfileIntelligenceAgent",
+      "status": "completed",
+      "depends_on": ["P3-M1-T1"],
+      "estimated_hours": 2.0,
+      "files": ["ai/engines/profile_intelligence.py"],
+      "tests": ["tests/unit/ai/engines/test_profile_intelligence.py"],
+      "done_when": ["Single source of truth for candidate data", "Reorders skills and bullets per job description"]
+    },
+    {
+      "id": "P6-M2-T1",
+      "title": "Implement LaTeXRenderer",
+      "status": "completed",
+      "depends_on": [],
+      "estimated_hours": 2.0,
+      "files": ["ai/engines/resume/latex_renderer.py"],
+      "tests": ["tests/unit/ai/engines/resume/test_latex_renderer.py"],
+      "done_when": ["Substitutes template variables in .tex files", "Handles LaTeX special character escaping"]
+    },
+    {
+      "id": "P6-M2-T2",
+      "title": "Implement PDFCompiler subprocess handler",
+      "status": "todo",
+      "depends_on": ["P6-M2-T1"],
+      "estimated_hours": 3.0,
+      "files": ["ai/engines/resume/pdf_compiler.py"],
+      "tests": ["tests/unit/ai/engines/resume/test_pdf_compiler.py"],
+      "done_when": ["Compiles LaTeX string using lualatex", "Handles errors & cleans up temp files"]
+    },
+    {
+      "id": "P7-M1-T1",
+      "title": "Set up Playwright browser automation framework",
+      "status": "todo",
+      "depends_on": [],
+      "estimated_hours": 2.0,
+      "files": ["automation/browser.py"],
+      "tests": ["tests/unit/automation/test_browser.py"],
+      "done_when": ["BrowserSession context manager starts headless Chromium", "Handles page navigation and teardown"]
+    },
+    {
+      "id": "P7-M2-T1",
+      "title": "Implement ConfidenceEngine decision logic",
+      "status": "completed",
+      "depends_on": ["P4-M2-T1"],
+      "estimated_hours": 2.0,
+      "files": ["automation/confidence.py"],
+      "tests": ["tests/unit/automation/test_confidence.py"],
+      "done_when": ["Determines AUTO_APPLY, ASK_USER, or REVIEW", "Adjusts score for form complexity"]
+    },
+    {
+      "id": "P7-M3-T1",
+      "title": "Implement GreenhouseFormFiller Playwright automation",
+      "status": "todo",
+      "depends_on": ["P7-M1-T1", "P5-M1-T1"],
+      "estimated_hours": 8.0,
+      "files": ["automation/fillers/greenhouse.py"],
+      "tests": ["tests/unit/automation/test_greenhouse_filler.py"],
+      "done_when": ["Fills standard fields & uploads files", "Raises PauseRequired on CAPTCHA/OTP or new questions"]
+    },
+    {
+      "id": "P7-M4-T1",
+      "title": "Implement TelegramNotifier for Human-in-the-loop alerts",
+      "status": "todo",
+      "depends_on": [],
+      "estimated_hours": 3.0,
+      "files": ["automation/notification.py"],
+      "tests": ["tests/unit/automation/test_notification.py"],
+      "done_when": ["Sends Telegram approval request with inline buttons", "Waits for user 1-click response"]
+    }
+  ]
+}
