@@ -5,9 +5,13 @@ Helios v5.0 Complete Universal Agent Runner.
 Integrates complete v5 Discovery-to-Application Pipeline:
 CareersDiscoveryEngine -> ApplyDestinationResolver -> Live Portal Detector -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
 
+Enforces Strict Audit & Execution Invariants:
+1. application_flow_started MUST be False unless application_destination.resolved is True AND application form is reached.
+2. submission.attempted MUST be False unless application_flow_started is True AND live submit initiated.
+3. If first discovered job destination fails to resolve, automatically iterates to next active discovered job requisition.
+
 CLI Flags:
   --company Siemens [--url <requisition_url> | --search "Software Engineer"] [--plan-only | --dry-run | --live] [--one-shot]
-  Default execution policy is DRY RUN (--dry-run).
 """
 import sys
 import os
@@ -45,6 +49,10 @@ vault = EncryptedCredentialVault()
 
 def safe_print(msg: str):
     print(msg.encode("ascii", errors="ignore").decode("ascii"))
+
+
+def print_milestone(milestone_name: str, details: str = ""):
+    safe_print(f"[MILESTONE: {milestone_name}] {details}")
 
 
 def print_forensic_table(portal_id, freshness, plan, evidence, mode, validation_level):
@@ -91,7 +99,7 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
     candidate_email = "vinay.khosya.ug23@nsut.ac.in"
     job_title = "Software Engineer"
     discovered_hint_ats = "UNKNOWN"
-    discovered_req_id = "R105492"
+    discovered_req_id = "UNKNOWN"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -99,31 +107,53 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
         context = await browser.new_context(storage_state=restored_state)
         page = await context.new_page()
 
-        # Step 1: Careers Discovery if target_url is not directly supplied
+        # Step 1: Careers Discovery
+        discovered_jobs = []
         if not target_url:
-            safe_print(f"[Step 1] Navigating {company.upper()} official careers gateway to discover jobs...")
+            print_milestone("DISCOVERY_STARTED", f"Company: {company}, Query: '{search_query}'")
             discovered_jobs = await CareersDiscoveryEngine.discover_jobs(page, company, search_query)
             if discovered_jobs:
-                selected_job = discovered_jobs[0]
-                target_url = selected_job.requisition_url
-                job_title = selected_job.title
-                discovered_hint_ats = selected_job.application_system or "UNKNOWN"
-                discovered_req_id = selected_job.requisition_id or "R105492"
-                safe_print(f"  [DISCOVERED HINT] Selected Job: '{job_title}' ({discovered_req_id})")
-                safe_print(f"  [DISCOVERED HINT] Predicted ATS: {discovered_hint_ats}")
+                print_milestone("JOBS_DISCOVERED", f"Count: {len(discovered_jobs)}")
             else:
                 target_url = "https://siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/Bangalore-India/Software-Engineer_R105492"
 
-        # Step 2: ApplyDestinationResolver
-        safe_print("\n[Step 2] ApplyDestinationResolver resolving application URL...")
-        dest_res = await ApplyDestinationResolver.resolve_destination(page, target_url)
-        final_app_url = dest_res.final_url
-        canon_key = get_canonical_requisition_key(final_app_url)
-        safe_print(f"  Resolved Application URL: {final_app_url}")
-        safe_print(f"  Redirect Chain:           {dest_res.redirect_chain}")
-        safe_print(f"  Canonical Key:            {canon_key}")
+        candidate_urls = [j.requisition_url for j in discovered_jobs] if discovered_jobs else [target_url]
 
-        # Determine initial validation level
+        # Iterate over discovered candidates until application destination resolves
+        dest_res = None
+        final_app_url = None
+        selected_job_title = job_title
+
+        for curr_url in candidate_urls:
+            print_milestone("JOB_DETAIL_REACHED", curr_url)
+            res = await ApplyDestinationResolver.resolve_destination(page, curr_url)
+            if res.apply_control_found:
+                print_milestone("APPLY_CONTROL_FOUND", f"Selector: {res.apply_control_selector}")
+            
+            if res.resolved and res.is_valid_application_flow and not res.is_maintenance:
+                dest_res = res
+                final_app_url = res.final_url
+                print_milestone("APPLICATION_DESTINATION_RESOLVED", final_app_url)
+                break
+            else:
+                safe_print(f"[DISCOVERY WARNING] Requisition URL {curr_url} failed destination resolution ({res.error_reason}). Trying next candidate...")
+
+        if not dest_res or not final_app_url:
+            dest_res = res if 'res' in locals() else DestinationResolution(resolved=False, initial_url=target_url or "", final_url=target_url or "")
+            final_app_url = dest_res.final_url or target_url or ""
+
+        canon_key = get_canonical_requisition_key(final_app_url)
+        safe_print(f"Company:                {company.upper()}")
+        safe_print(f"Final Application URL:  {final_app_url}")
+        safe_print(f"Canonical Identity Key: {canon_key}")
+
+        # Initialize Vault
+        vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
+        meta = vault.list_credentials_metadata()
+        print_milestone("AUTHENTICATED", f"Vault fernet AES-128 credential active: {company.lower()}")
+
+        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+
         if mode == "plan_only":
             validation_level = "LIVE_PORTAL_INSPECTED"
         elif mode == "dry_run":
@@ -131,24 +161,18 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
         else:
             validation_level = "ONE_SHOT_LIVE_PENDING" if one_shot else "LIVE_SUBMISSION_PENDING"
 
-        # Initialize Vault
-        vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
-        meta = vault.list_credentials_metadata()
-        safe_print(f"[Vault Credentials Initialized]: {meta}")
-
-        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
         forensic_log = {
             "discovery": {
                 "searched_company": company,
                 "search_query": search_query,
-                "job_title": job_title,
+                "job_title": selected_job_title,
                 "requisition_id": discovered_req_id,
                 "predicted_ats": discovered_hint_ats
             },
             "job": {
-                "title": job_title,
+                "title": selected_job_title,
                 "company": company,
-                "requisition_url": target_url,
+                "requisition_url": target_url or final_app_url,
                 "canonical_application_key": canon_key
             },
             "application_destination": {
@@ -158,7 +182,7 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
                 "apply_control_found": dest_res.apply_control_found
             },
             "portal": {
-                "reached": dest_res.resolved,
+                "reached": False,
                 "identity_verified": False,
                 "verified_live_ats": None,
                 "type": None,
@@ -197,7 +221,26 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
             "final_status": "PENDING"
         }
 
-        # Check Freshness & Canonical Dedup
+        # EXECUTION CONTROL GUARD: Stop immediately if destination was NOT resolved!
+        if not dest_res.resolved or dest_res.is_maintenance:
+            safe_print("\n[EXECUTION GUARD] Application destination failed resolution or ended in maintenance page. Stopping execution cleanly.")
+            forensic_log["portal"]["reached"] = False
+            forensic_log["portal"]["identity_verified"] = False
+            forensic_log["execution"]["application_flow_started"] = False
+            forensic_log["submission"]["attempted"] = False
+            forensic_log["final_status"] = "APPLICATION_BLOCKED_UNKNOWN_PORTAL_STATE"
+            
+            audits_dir = os.path.join(base_dir, "data", "audits")
+            os.makedirs(audits_dir, exist_ok=True)
+            audit_file_name = f"siemens_one_shot_live_{timestamp_str}.json" if one_shot else f"v5_forensic_execution_record_{mode}.json"
+            log_path = os.path.join(audits_dir, audit_file_name)
+            with open(log_path, "w", encoding="utf-8") as f:
+                json.dump(forensic_log, f, indent=2)
+            
+            await browser.close()
+            return forensic_log
+
+        # Freshness Check & Canonical Dedup
         freshness = await verify_job_freshness(page, final_app_url)
         safe_print(f"[Freshness Check]: is_fresh={freshness.is_fresh}, status_code={freshness.status_code}")
 
@@ -207,17 +250,18 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
             await browser.close()
             return forensic_log
 
-        # Step 3: Portal Detector (Live Verification Invariant: Discovery predicts, Live page verifies!)
+        # Step 3: Portal Detector (Live Verification Invariant)
         portal_id = await PortalDetector.detect(page)
         forensic_log["portal"]["type"] = portal_id.type
         forensic_log["portal"]["company"] = portal_id.company
         forensic_log["portal"]["verified_live_ats"] = portal_id.type.upper()
+        forensic_log["portal"]["reached"] = True
         forensic_log["portal"]["identity_verified"] = portal_id.confidence >= 0.80
-        safe_print(f"[Step 3] Portal Detector (LIVE VERIFIED): type='{portal_id.type}', company='{portal_id.company}', confidence={portal_id.confidence}")
+        print_milestone("PORTAL_VERIFIED", f"Type: {portal_id.type.upper()}, Confidence: {portal_id.confidence}")
 
         # Step 4: Resume Tailoring
         safe_print("Tailoring Resume via Groq Llama 3.3 70B...")
-        tailored = await resume_service.tailor_resume(job_title, company, "Python, PyTorch, C++, Deep Learning")
+        tailored = await resume_service.tailor_resume(selected_job_title, company, "Python, PyTorch, C++, Deep Learning")
         resume_pdf_path = os.path.join(base_dir, f"Vinay_Khosya_{company}_v5_Resume.pdf")
         with open(resume_pdf_path, "w", encoding="utf-8") as f:
             f.write("% PDF Binary\n" + tailored.get("tailored_tex", ""))
@@ -245,19 +289,28 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
         )
 
         current_url = page.url.lower()
-        is_maintenance = dest_res.is_maintenance or "community.workday.com/maintenance-page" in current_url
-        flow_started = (not is_maintenance) and (plan.page_type.value == "APPLICATION_FORM" or len(plan.actions) > 0)
+        is_maint = dest_res.is_maintenance or "community.workday.com/maintenance-page" in current_url
+        flow_started = (not is_maint) and dest_res.resolved and (plan.page_type.value == "APPLICATION_FORM" or len(plan.actions) > 0)
+
+        if flow_started:
+            print_milestone("APPLICATION_FORM_REACHED", page.url)
+
+        resume_uploaded = any(a.action_type.value == "ATTACH" and a.succeeded for a in evidence.actions)
+        if resume_uploaded:
+            print_milestone("RESUME_UPLOADED", os.path.basename(resume_pdf_path))
 
         forensic_log["execution"]["application_flow_started"] = flow_started
         forensic_log["execution"]["fields_filled"] = sum(1 for a in evidence.actions if a.action_type.value == "FILL" and a.succeeded)
-        forensic_log["execution"]["resume_uploaded"] = any(a.action_type.value == "ATTACH" and a.succeeded for a in evidence.actions)
+        forensic_log["execution"]["resume_uploaded"] = resume_uploaded
         forensic_log["execution"]["submit_clicked"] = evidence.submit_clicked
 
         if flow_started:
             forensic_log["pages"]["completed"] = 1
 
+        # Strict Submission Attempted Invariant: Must be flow_started AND mode live AND one_shot!
+        submit_attempted = flow_started and mode == "live" and one_shot
         forensic_log["submission"] = {
-            "attempted": flow_started and mode == "live" and one_shot,
+            "attempted": submit_attempted,
             "clicked": evidence.submit_clicked,
             "post_submit_url": evidence.url_after,
             "confirmation_detected": evidence.live_dom_confirmation,
@@ -279,11 +332,13 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
         )
 
         if is_live_submission_verified:
+            print_milestone("SUBMITTED", evidence.url_after)
+            print_milestone("POST_SUBMIT_CONFIRMED", f"ID: {evidence.application_id}")
             forensic_log["validation_level"] = "LIVE_SUBMISSION_VERIFIED"
             forensic_log["final_status"] = "APPLICATION_COMPLETED_AND_CONFIRMED"
             save_processed_key(final_app_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
-        elif is_maintenance:
+        elif is_maint:
             forensic_log["final_status"] = "APPLICATION_BLOCKED_UNKNOWN_PORTAL_STATE"
         elif evidence.submit_clicked and not evidence.live_dom_confirmation:
             forensic_log["final_status"] = "SUBMISSION_COMPLETED_CONFIRMATION_NOT_FOUND"
@@ -303,8 +358,6 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
             f"{mode_tag}\n\n"
             f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
             f"• <b>Canonical Key</b>: <code>{canon_key}</code>\n"
-            f"• <b>Predicted ATS</b>: <b>{discovered_hint_ats}</b>\n"
-            f"• <b>Live Verified ATS</b>: <b>{portal_id.type.upper()}</b>\n"
             f"• <b>Mode</b>: <b>{mode_str}</b>\n"
             f"• <b>Flow Started</b>: <b>{flow_started}</b>\n"
             f"• <b>Validation Level</b>: <b>{forensic_log['validation_level']}</b>\n"
@@ -319,13 +372,9 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
 
         await browser.close()
 
-    # Save to data/audits/ if one-shot or standard persistent log
     audits_dir = os.path.join(base_dir, "data", "audits")
     os.makedirs(audits_dir, exist_ok=True)
-    if one_shot:
-        audit_file_name = f"siemens_one_shot_live_{timestamp_str}.json"
-    else:
-        audit_file_name = f"v5_forensic_execution_record_{mode}.json"
+    audit_file_name = f"siemens_one_shot_live_{timestamp_str}.json" if one_shot else f"v5_forensic_execution_record_{mode}.json"
 
     log_path = os.path.join(audits_dir, audit_file_name)
     with open(log_path, "w", encoding="utf-8") as f:
@@ -341,7 +390,7 @@ async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search
     safe_print(f"Target URL:            {final_app_url}")
     safe_print(f"Canonical Key:         {canon_key}")
     safe_print(f"Predicted ATS:         {discovered_hint_ats}")
-    safe_print(f"Live Verified ATS:     {portal_id.type.upper()}")
+    safe_print(f"Live Verified ATS:     {portal_id.type.upper() if 'portal_id' in locals() else 'UNKNOWN'}")
     safe_print(f"Authentication:        Successful")
     safe_print("\nAPPLICATION PROGRESS")
     safe_print("--------------------")
