@@ -1,0 +1,62 @@
+{
+  "discovery": {
+    "searched_company": "Siemens",
+    "search_query": "Software Engineer",
+    "job_title": "Software Engineer",
+    "requisition_id": "R105492",
+    "predicted_ats": "UNKNOWN"
+  },
+  "job": {
+    "title": "Software Engineer",
+    "company": "Siemens",
+    "requisition_url": "https://siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/Bangalore-India/Software-Engineer_R105492",
+    "canonical_application_key": "workday:siemens:software-engineer_r105492"
+  },
+  "application_destination": {
+    "resolved": false,
+    "url": "https://siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/Bangalore-India/Software-Engineer_R105492",
+    "redirect_chain": [
+      "https://siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/Bangalore-India/Software-Engineer_R105492",
+      "https://community.workday.com/invalid-url"
+    ],
+    "apply_control_found": false
+  },
+  "portal": {
+    "reached": false,
+    "identity_verified": true,
+    "verified_live_ats": "WORKDAY",
+    "type": "workday",
+    "company": "community"
+  },
+  "authentication": {
+    "required": true,
+    "successful": true
+  },
+  "pages": {
+    "total": 1,
+    "completed": 1
+  },
+  "execution": {
+    "application_flow_started": true,
+    "fields_filled": 0,
+    "questions_answered": 0,
+    "resume_uploaded": false,
+    "unresolved_fields": [],
+    "submit_clicked": false
+  },
+  "submission": {
+    "attempted": true,
+    "clicked": false,
+    "post_submit_url": "https://community.workday.com/invalid-url",
+    "confirmation_detected": false,
+    "application_id": null,
+    "application_id_source": "NONE"
+  },
+  "email": {
+    "checked": false,
+    "confirmation_found": false,
+    "status": "EMAIL_CONFIRMATION_PENDING"
+  },
+  "validation_level": "ONE_SHOT_LIVE_PENDING",
+  "final_status": "APPLICATION_BLOCKED_UNKNOWN_PORTAL_STATE"
+}

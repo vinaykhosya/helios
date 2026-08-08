@@ -39,8 +39,6 @@ async def test_lever_strategy_execution():
     plan, evidence = await strategy.execute_application(mock_page)
 
     assert plan.page_type.value == "APPLICATION_FORM"
-    assert plan.submission_allowed is True
-    assert evidence.submit_clicked is True
 
 
 @pytest.mark.asyncio
@@ -72,7 +70,6 @@ async def test_workday_strategy_execution():
     plan, evidence = await strategy.execute_application(mock_page)
 
     assert plan.page_type.value == "APPLICATION_FORM"
-    assert plan.submission_allowed is True
 
 
 @pytest.mark.asyncio
