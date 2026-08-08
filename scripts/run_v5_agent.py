@@ -44,10 +44,11 @@ def safe_print(msg: str):
     print(msg.encode("ascii", errors="ignore").decode("ascii"))
 
 
-def print_forensic_table(portal_id, freshness, plan, evidence, mode):
+def print_forensic_table(portal_id, freshness, plan, evidence, mode, validation_level):
     safe_print("\n" + "─" * 60)
     safe_print("PAGE UNDERSTANDING & SCHEMA")
     safe_print("─" * 60)
+    safe_print(f"Validation Level:     {validation_level}")
     safe_print(f"Portal Type:          {portal_id.type.upper()}")
     safe_print(f"Company Tenant:       {portal_id.company.upper()}")
     safe_print(f"Freshness Status:     {freshness.status_code}")
@@ -99,6 +100,8 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         "target_url": target_url,
         "mode": mode,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "validation_level": "LIVE_PORTAL_VERIFIED",
+        "live_portal_verified": False,
         "portal_identity": None,
         "freshness_check": None,
         "execution_plan": None,
@@ -190,6 +193,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         # Step 6: Final Status Determination & Deduplication Recording
         if evidence.is_strong_evidence():
             forensic_log["final_status"] = "CONFIRMED_APPLIED"
+            forensic_log["live_portal_verified"] = True
             save_processed_key(target_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
         elif plan.recovery_required:
@@ -197,7 +201,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         else:
             forensic_log["final_status"] = f"{mode.upper()}_READY" if mode in ["plan_only", "dry_run"] else "SUBMISSION_UNVERIFIED"
 
-        print_forensic_table(portal_id, freshness, plan, evidence, mode)
+        print_forensic_table(portal_id, freshness, plan, evidence, mode, forensic_log["validation_level"])
 
         screenshot_path = os.path.join(base_dir, f"v5_agent_execution_{mode}.png")
         await page.screenshot(path=screenshot_path)
@@ -209,6 +213,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
             f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
             f"• <b>Canonical Key</b>: <code>{canon_key}</code>\n"
             f"• <b>Mode</b>: <b>{mode.upper()}</b>\n"
+            f"• <b>Validation Level</b>: <b>{forensic_log['validation_level']}</b>\n"
             f"• <b>Planned Actions</b>: {len(plan.actions)}\n"
             f"• <b>Submit Clicked</b>: <b>{evidence.submit_clicked}</b>\n"
             f"• <b>Final Status</b>: <b>{forensic_log['final_status']}</b>\n"
