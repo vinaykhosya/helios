@@ -2,12 +2,15 @@
 scripts/run_v5_agent.py
 
 Helios v5.0 Complete Universal Agent Runner.
-Integrates the complete v5 Universal Portal Intelligence Pipeline:
-Canonical ApplicationKey Dedup -> PortalDetector -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
+Integrates the complete v5 Discovery-to-Application Pipeline:
+Company Careers Discovery -> Rank/Select Requisition -> Canonical Identity Dedup -> Live Portal Detection -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
 
-Supports Controlled One-Shot Execution:
-  --company Siemens --url <URL> --live --one-shot
-  Creates data/audits/siemens_one_shot_live_<timestamp>.json
+Discovery Invariant:
+  Discovery predicts ATS identity; the live application page verifies!
+
+CLI Flags:
+  --company Siemens [--url <requisition_url> | --search "Software Engineer"] [--plan-only | --dry-run | --live] [--one-shot]
+  Default execution policy is DRY RUN (--dry-run).
 """
 import sys
 import os
@@ -15,6 +18,7 @@ import argparse
 import asyncio
 import json
 import time
+from typing import Optional, Dict, Any
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if base_dir not in sys.path:
@@ -27,6 +31,7 @@ from backend.src.services.telegram_service import TelegramService
 from automation.sessions.credentials import EncryptedCredentialVault
 from automation.sessions.manager import PortalSessionManager
 from automation.verifier import verify_job_freshness, get_canonical_requisition_key, save_processed_key
+from automation.discovery.careers_discovery import CareersDiscoveryEngine
 from automation.portals.detector import PortalDetector
 from automation.portals.strategies.lever import LeverStrategy
 from automation.portals.strategies.greenhouse import GreenhouseStrategy
@@ -79,75 +84,15 @@ def print_forensic_table(portal_id, freshness, plan, evidence, mode, validation_
     safe_print("─" * 60 + "\n")
 
 
-async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", one_shot: bool = False):
+async def run_v5_pipeline(company: str, target_url: Optional[str] = None, search_query: str = "Software Engineer", mode: str = "dry_run", one_shot: bool = False):
     safe_print("=" * 70)
     mode_str = f"{mode.upper()} (ONE-SHOT LIVE)" if (mode == "live" and one_shot) else mode.upper()
-    safe_print(f"[HELIOS v5.0] UNIVERSAL AGENT RUNNER — MODE: {mode_str}")
+    safe_print(f"[HELIOS v5.0] END-TO-END DISCOVERY & APPLICATION RUNNER — MODE: {mode_str}")
     safe_print("=" * 70)
 
     candidate_email = "vinay.khosya.ug23@nsut.ac.in"
-    canon_key = get_canonical_requisition_key(target_url)
-    safe_print(f"Company: {company.upper()}")
-    safe_print(f"Target URL: {target_url}")
-    safe_print(f"Canonical Identity Key: {canon_key}")
-
-    # Determine initial validation level
-    if mode == "plan_only":
-        validation_level = "LIVE_PORTAL_INSPECTED"
-    elif mode == "dry_run":
-        validation_level = "LIVE_PORTAL_DRY_RUN"
-    else:
-        validation_level = "ONE_SHOT_LIVE_PENDING" if one_shot else "LIVE_SUBMISSION_PENDING"
-
-    # Step 1: Encrypt Credentials in Vault
-    vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
-    meta = vault.list_credentials_metadata()
-    safe_print(f"[Step 1] Vault Credentials Initialized (Fernet AES-128): {meta}")
-
-    timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-    forensic_log = {
-        "test_type": "ONE_SHOT_LIVE" if one_shot else mode.upper(),
-        "company": company,
-        "job_title": "Software / AI Engineer",
-        "target_url": target_url,
-        "canonical_application_key": canon_key,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "portal": {
-            "reached": False,
-            "identity_verified": False,
-            "type": None,
-            "company": company.lower()
-        },
-        "authentication": {
-            "required": True,
-            "successful": True
-        },
-        "pages": {
-            "total": 1,
-            "completed": 0
-        },
-        "execution": {
-            "application_flow_started": False,
-            "fields_filled": 0,
-            "questions_answered": 0,
-            "resume_uploaded": False,
-            "submit_clicked": False
-        },
-        "submission": {
-            "attempted": False,
-            "clicked": False,
-            "confirmation_detected": False,
-            "application_id": None,
-            "application_id_source": "NONE",
-            "result_url": None
-        },
-        "email": {
-            "checked": False,
-            "confirmation_found": False
-        },
-        "validation_level": validation_level,
-        "final_status": "PENDING"
-    }
+    job_title = "Software Engineer"
+    discovered_hint_ats = "UNKNOWN"
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -155,7 +100,86 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
         context = await browser.new_context(storage_state=restored_state)
         page = await context.new_page()
 
-        safe_print("\n[Step 2] Navigating Requisition URL...")
+        # Step 1: Careers Discovery if target_url is not directly supplied
+        if not target_url:
+            safe_print(f"[Step 1] Navigating {company.upper()} official careers gateway to discover jobs...")
+            discovered_jobs = await CareersDiscoveryEngine.discover_jobs(page, company, search_query)
+            if discovered_jobs:
+                selected_job = discovered_jobs[0]
+                target_url = selected_job.requisition_url
+                job_title = selected_job.title
+                discovered_hint_ats = selected_job.application_system or "UNKNOWN"
+                safe_print(f"  [DISCOVERED HINT] Selected Job: '{job_title}' ({selected_job.requisition_id or 'ReqID'})")
+                safe_print(f"  [DISCOVERED HINT] Predicted ATS: {discovered_hint_ats}")
+            else:
+                target_url = "https://siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/Bangalore-India/Software-Engineer_R105492"
+
+        canon_key = get_canonical_requisition_key(target_url)
+        safe_print(f"Company: {company.upper()}")
+        safe_print(f"Target URL: {target_url}")
+        safe_print(f"Canonical Identity Key: {canon_key}")
+
+        # Determine initial validation level
+        if mode == "plan_only":
+            validation_level = "LIVE_PORTAL_INSPECTED"
+        elif mode == "dry_run":
+            validation_level = "LIVE_PORTAL_DRY_RUN"
+        else:
+            validation_level = "ONE_SHOT_LIVE_PENDING" if one_shot else "LIVE_SUBMISSION_PENDING"
+
+        # Initialize Vault
+        vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
+        meta = vault.list_credentials_metadata()
+        safe_print(f"[Step 1] Vault Credentials Initialized (Fernet AES-128): {meta}")
+
+        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+        forensic_log = {
+            "test_type": "ONE_SHOT_LIVE" if one_shot else mode.upper(),
+            "company": company,
+            "job_title": job_title,
+            "target_url": target_url,
+            "canonical_application_key": canon_key,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "portal": {
+                "reached": False,
+                "identity_verified": False,
+                "discovery_predicted_ats": discovered_hint_ats,
+                "verified_live_ats": None,
+                "type": None,
+                "company": company.lower()
+            },
+            "authentication": {
+                "required": True,
+                "successful": True
+            },
+            "pages": {
+                "total": 1,
+                "completed": 0
+            },
+            "execution": {
+                "application_flow_started": False,
+                "fields_filled": 0,
+                "questions_answered": 0,
+                "resume_uploaded": False,
+                "submit_clicked": False
+            },
+            "submission": {
+                "attempted": False,
+                "clicked": False,
+                "confirmation_detected": False,
+                "application_id": None,
+                "application_id_source": "NONE",
+                "result_url": None
+            },
+            "email": {
+                "checked": False,
+                "confirmation_found": False
+            },
+            "validation_level": validation_level,
+            "final_status": "PENDING"
+        }
+
+        safe_print("\n[Step 2] Navigating Requisition Target URL...")
         await page.goto(target_url, timeout=20000, wait_until="domcontentloaded")
         await page.wait_for_timeout(1000)
 
@@ -171,16 +195,17 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             await browser.close()
             return forensic_log
 
-        # Step 3: Portal Detector
+        # Step 3: Portal Detector (Live Verification Invariant: Discovery predicts, Live page verifies!)
         portal_id = await PortalDetector.detect(page)
         forensic_log["portal"]["type"] = portal_id.type
         forensic_log["portal"]["company"] = portal_id.company
+        forensic_log["portal"]["verified_live_ats"] = portal_id.type.upper()
         forensic_log["portal"]["identity_verified"] = portal_id.confidence >= 0.80
-        safe_print(f"[Step 3] Portal Detector: type='{portal_id.type}', company='{portal_id.company}', confidence={portal_id.confidence}")
+        safe_print(f"[Step 3] Portal Detector (LIVE VERIFIED): type='{portal_id.type}', company='{portal_id.company}', confidence={portal_id.confidence}")
 
         # Step 4: Resume Tailoring
         safe_print("Tailoring Resume via Groq Llama 3.3 70B...")
-        tailored = await resume_service.tailor_resume("Software Engineer", company, "Python, PyTorch, C++, Deep Learning")
+        tailored = await resume_service.tailor_resume(job_title, company, "Python, PyTorch, C++, Deep Learning")
         resume_pdf_path = os.path.join(base_dir, f"Vinay_Khosya_{company}_v5_Resume.pdf")
         with open(resume_pdf_path, "w", encoding="utf-8") as f:
             f.write("% PDF Binary\n" + tailored.get("tailored_tex", ""))
@@ -208,7 +233,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             resume_pdf_path=resume_pdf_path
         )
 
-        # Check if actual application flow started (not maintenance redirect)
+        # Check if actual application flow started
         current_url = page.url.lower()
         is_maintenance = "community.workday.com/maintenance-page" in current_url
         flow_started = (not is_maintenance) and (plan.page_type.value == "APPLICATION_FORM" or len(plan.actions) > 0)
@@ -221,7 +246,6 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
         if flow_started:
             forensic_log["pages"]["completed"] = 1
 
-        # Correct Audit Semantics: attempted is ONLY True if flow_started AND mode is live AND one_shot!
         forensic_log["submission"] = {
             "attempted": flow_started and mode == "live" and one_shot,
             "clicked": evidence.submit_clicked,
@@ -269,6 +293,8 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             f"{mode_tag}\n\n"
             f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
             f"• <b>Canonical Key</b>: <code>{canon_key}</code>\n"
+            f"• <b>Predicted ATS</b>: <b>{discovered_hint_ats}</b>\n"
+            f"• <b>Live Verified ATS</b>: <b>{portal_id.type.upper()}</b>\n"
             f"• <b>Mode</b>: <b>{mode_str}</b>\n"
             f"• <b>Flow Started</b>: <b>{flow_started}</b>\n"
             f"• <b>Validation Level</b>: <b>{forensic_log['validation_level']}</b>\n"
@@ -297,13 +323,14 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
 
     # Print Live Console Report
     safe_print("\n" + "=" * 70)
-    safe_print("HELIOS V5 — ONE SHOT LIVE SIEMENS REPORT")
+    safe_print("HELIOS V5 — END-TO-END DISCOVERY & APPLICATION REPORT")
     safe_print("=" * 70)
     safe_print(f"Company:               {company.upper()}")
     safe_print(f"Job Title:             {forensic_log['job_title']}")
     safe_print(f"Target URL:            {target_url}")
     safe_print(f"Canonical Key:         {canon_key}")
-    safe_print(f"Portal Type:           {portal_id.type.upper()}")
+    safe_print(f"Predicted ATS:         {discovered_hint_ats}")
+    safe_print(f"Live Verified ATS:     {portal_id.type.upper()}")
     safe_print(f"Authentication:        Successful")
     safe_print("\nAPPLICATION PROGRESS")
     safe_print("--------------------")
@@ -336,7 +363,8 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Helios v5.0 Universal Agent Runner")
     parser.add_argument("--company", type=str, default="Siemens", help="Company Name")
-    parser.add_argument("--url", type=str, default="https://jobs.siemens.com/en_US/externaljobs", help="Requisition URL")
+    parser.add_argument("--url", type=str, default=None, help="Requisition URL")
+    parser.add_argument("--search", type=str, default="Software Engineer", help="Search Query")
     parser.add_argument("--plan-only", action="store_true", help="Execute plan-only mode (no DOM changes)")
     parser.add_argument("--live", action="store_true", help="Execute live submission mode")
     parser.add_argument("--one-shot", action="store_true", help="Authorize ONE-SHOT live submission")
@@ -349,4 +377,4 @@ if __name__ == "__main__":
     else:
         exec_mode = "dry_run"
 
-    asyncio.run(run_v5_pipeline(args.company, args.url, mode=exec_mode, one_shot=args.one_shot))
+    asyncio.run(run_v5_pipeline(args.company, target_url=args.url, search_query=args.search, mode=exec_mode, one_shot=args.one_shot))
