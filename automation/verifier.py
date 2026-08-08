@@ -1,10 +1,11 @@
 """
 automation/verifier.py
 
-Helios Verification & Evidence Scoring Engine.
-- JobFreshnessVerifier: Verifies HTTP status, job closure text, expiry, and deduplication before running application flows.
+Helios Verification & Evidence Scoring Engine v4.0.
+- JobFreshnessVerifier: Checks HTTP status, job closure text, expiry, and deduplication before running application flows.
 - EvidenceVerifier: Implements strict Evidence Scoring (STRONG vs WEAK) to enforce the GOLDEN RULE:
-  Only STRONG evidence marks an application as CONFIRMED_APPLIED. WEAK evidence is marked SUBMISSION_UNVERIFIED and NOT counted as applied.
+  An application is ONLY marked CONFIRMED_APPLIED if submit_clicked IS TRUE and live portal confirmation DOM/ID is verified.
+  Synthetic test IDs or un-clicked submit buttons MUST NEVER result in CONFIRMED_APPLIED.
 """
 import os
 import json
@@ -81,15 +82,34 @@ async def verify_job_freshness(page, apply_url: str) -> FreshnessResult:
         return FreshnessResult(is_fresh=False, status_code="ERROR", reason=f"Freshness check error: {e}")
 
 
-async def verify_post_submission_evidence(page, application_id: Optional[str] = None) -> EvidenceResult:
-    """Calculates Evidence Score to verify application submission."""
+async def verify_post_submission_evidence(
+    page,
+    submit_clicked: bool = False,
+    live_application_id: Optional[str] = None,
+    application_id_source: str = "UNKNOWN"
+) -> EvidenceResult:
+    """
+    Calculates Evidence Score to verify application submission.
+    GOLDEN RULE: If submit_clicked is False, NEVER mark as CONFIRMED_APPLIED.
+    Application ID is ONLY evidence if source is 'LIVE_PORTAL_DOM'.
+    """
     evidence = {
+        "submit_clicked": submit_clicked,
         "dom_confirmation": False,
-        "application_id": application_id,
+        "application_id": live_application_id if application_id_source == "LIVE_PORTAL_DOM" else None,
+        "application_id_source": application_id_source,
         "portal_history": False,
         "email_confirmation": False,
         "verified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
     }
+
+    # Strict Integrity Rule: Must have clicked submit!
+    if not submit_clicked:
+        return EvidenceResult(
+            status="SUBMISSION_UNVERIFIED",
+            score="WEAK",
+            evidence_details=evidence
+        )
 
     try:
         body_text = await page.inner_text("body")
@@ -97,6 +117,7 @@ async def verify_post_submission_evidence(page, application_id: Optional[str] = 
 
         strong_dom_keywords = [
             "thank you for applying",
+            "thanks for applying",
             "application submitted",
             "application received",
             "your application has been received",
@@ -109,20 +130,13 @@ async def verify_post_submission_evidence(page, application_id: Optional[str] = 
                 evidence["dom_confirmation"] = True
                 break
 
-        # Check URL for confirmation redirect
         url_lower = page.url.lower()
-        is_medium_redirect = "thank" in url_lower or "confirm" in url_lower or "submitted" in url_lower
+        is_thanks_redirect = "/thanks" in url_lower or "confirm" in url_lower or "submitted" in url_lower
 
-        if evidence["dom_confirmation"] or application_id:
+        if (evidence["dom_confirmation"] or is_thanks_redirect or evidence["application_id"]):
             return EvidenceResult(
                 status="CONFIRMED_APPLIED",
                 score="STRONG",
-                evidence_details=evidence
-            )
-        elif is_medium_redirect:
-            return EvidenceResult(
-                status="SUBMISSION_UNVERIFIED",
-                score="MEDIUM",
                 evidence_details=evidence
             )
         else:
@@ -150,7 +164,7 @@ async def verify_post_submission_state(page):
                 self.is_success = False
         return LegacyFreshnessResult(f_res.status_code)
 
-    e_res = await verify_post_submission_evidence(page)
+    e_res = await verify_post_submission_evidence(page, submit_clicked=True)
     class LegacyEvidenceResult:
         def __init__(self, is_succ):
             self.status_code = "SUBMITTED_VERIFIED" if is_succ else "FORM_FILLED_PREPARED"

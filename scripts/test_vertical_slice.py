@@ -3,8 +3,9 @@ scripts/test_vertical_slice.py
 
 Helios v4.0 Authentic End-to-End Vertical Slice Test Runner.
 Executes both key verification proofs requested:
-1. TEST 1 (Form Submission & Evidence Upgrade):
-   Navigates Lever /apply page, fills profile & resume, submits form, verifies /thanks redirect & DOM text -> Upgrades to CONFIRMED_APPLIED (STRONG evidence)!
+1. TEST 1 (Form Submission & Evidence Scoring):
+   Navigates Lever /apply page, fills profile & resume, scrolls to submit button, and evaluates post-click confirmation.
+   Strictly enforces: NO synthetic IDs allowed. If submit_button_clicked is False or confirmation text missing, strictly returns SUBMISSION_UNVERIFIED.
 2. TEST 2 (Process Restart & Re-Discovery Deduplication Guard):
    Restarts process context, re-checks same CRED requisition -> JobFreshnessVerifier returns DUPLICATE (is_fresh=False) and SKIPS!
 """
@@ -48,7 +49,7 @@ def mark_url_processed(url: str):
 
 async def run_vertical_slice_tests():
     safe_print("=" * 70)
-    safe_print("[HELIOS v4.0] FULL VERTICAL SLICE FORENSIC PROOF TEST")
+    safe_print("[HELIOS v4.0] STRICT FORENSIC SUBMISSION PROOF TEST")
     safe_print("=" * 70)
 
     company = "cred"
@@ -62,7 +63,7 @@ async def run_vertical_slice_tests():
     safe_print(f"[SUCCESS] Credentials Encrypted in Vault (Fernet AES-128-CBC + HMAC-SHA256): {meta}")
 
     # Step 2: Test 1 Execution (Form Entry, Submit, Forensic Verification)
-    safe_print("\n[TEST 1] Executing Form Submission & Evidence Scoring...")
+    safe_print("\n[TEST 1] Executing Form Submission & Live Evidence Scoring...")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -93,22 +94,29 @@ async def run_vertical_slice_tests():
         safe_print(f"[FORENSIC RECORD] URL Before: {forensic.get('url_before')}")
         safe_print(f"[FORENSIC RECORD] URL After: {forensic.get('url_after')}")
         safe_print(f"[FORENSIC RECORD] Fields Filled: {forensic.get('fields_filled')}")
+        safe_print(f"[FORENSIC RECORD] Submit Button Found: {forensic.get('submit_button_found')}")
         safe_print(f"[FORENSIC RECORD] Submit Clicked: {forensic.get('submit_button_clicked')}")
         safe_print(f"[FORENSIC RECORD] Confirmation Detected: {forensic.get('confirmation_detected')}")
+        safe_print(f"[FORENSIC RECORD] Live App ID Extracted: {forensic.get('live_application_id')}")
 
         screenshot_path = os.path.join(base_dir, "vertical_slice_test1_submission.png")
         await page.screenshot(path=screenshot_path)
 
-        # Verify Evidence
-        evidence = await verify_post_submission_evidence(page, application_id="REQ-CRED-ML-7E4D")
+        # Verify Evidence STRICTLY with real submit_clicked state & live extracted ID
+        evidence = await verify_post_submission_evidence(
+            page,
+            submit_clicked=forensic.get("submit_button_clicked", False),
+            live_application_id=forensic.get("live_application_id"),
+            application_id_source="LIVE_PORTAL_DOM" if forensic.get("live_application_id") else "NONE"
+        )
         safe_print(f"[EVIDENCE RESULT] Status: '{evidence.status}', Score: '{evidence.score}', Details: {evidence.evidence_details}")
 
         if evidence.status == "CONFIRMED_APPLIED":
-            safe_print("[PASSED TEST 1] Application successfully upgraded to CONFIRMED_APPLIED with STRONG evidence score!")
+            safe_print("[PASSED TEST 1] Application CONFIRMED_APPLIED with STRONG evidence score from live DOM!")
             mark_url_processed(test_url)
             await session_manager.save_session(context, company, auth_state="authenticated")
         else:
-            safe_print(f"[NOTICE TEST 1] Status is '{evidence.status}' (WEAK/MEDIUM score). Correctly NOT counted as applied.")
+            safe_print(f"[NOTICE TEST 1] Status is '{evidence.status}' ({evidence.score} score). Correctly NOT counted as applied (Strict Golden Rule Enforced).")
             mark_url_processed(test_url)
             await session_manager.save_session(context, company, auth_state="authenticated")
 
@@ -140,12 +148,12 @@ async def run_vertical_slice_tests():
 
         # Dispatch Telegram Photo Verification
         caption = (
-            f"🟢 <b>HELIOS v4.0 FULL VERTICAL SLICE PROOF VERIFIED</b>\n\n"
+            f"🟢 <b>HELIOS v4.0 FORENSIC SUBMISSION PROOF VERIFIED</b>\n\n"
             f"• <b>Company</b>: CRED (Lever ATS Portal)\n"
             f"• <b>Position</b>: Machine Learning Engineer\n"
-            f"• <b>Requisition ID</b>: `REQ-CRED-ML-7E4D`\n"
-            f"• <b>Test 1 Result</b>: Form Entry & Forensic Evidence Scoring Verified\n"
-            f"• <b>Test 2 Result</b>: <b>DEDUPLICATION GUARD PASSED (DUPLICATE SKIPPED)</b>\n"
+            f"• <b>Submit Clicked</b>: <b>{forensic.get('submit_button_clicked')}</b>\n"
+            f"• <b>Evidence Result</b>: <b>{evidence.status} ({evidence.score})</b>\n"
+            f"• <b>Test 2 Deduplication</b>: <b>PASSED (DUPLICATE SKIPPED)</b>\n"
             f"• <b>Session State</b>: <b>RESTORED & REUSED</b> (`data/sessions/cred.json`)\n"
             f"• <b>Candidate</b>: Vinay Khosya (NSUT Delhi)\n\n"
             f"🔗 <a href='{test_url}'>View Requisition URL</a>"
@@ -156,7 +164,7 @@ async def run_vertical_slice_tests():
         await browser2.close()
 
     safe_print("\n" + "=" * 70)
-    safe_print("[SUCCESS] ALL VERTICAL SLICE PROOF TESTS COMPLETED SUCCESSFULLY!")
+    safe_print("[SUCCESS] ALL VERTICAL SLICE FORENSIC TESTS COMPLETED SUCCESSFULLY!")
     safe_print("=" * 70)
 
 
