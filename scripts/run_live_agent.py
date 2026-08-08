@@ -1,12 +1,12 @@
 """
 scripts/run_live_agent.py
 
-Helios Autonomous 24/7 Agent Engine with Deduplication Registry & Multi-Step Career Portal Filler.
-- Persistent Deduplication Registry (data/applied_urls_history.json): Prevents repeating any job application twice.
-- Multi-Step Form Filler: Handles pagination buttons (Next, Continue, Apply Now, Enroll Now, Proceed, Submit).
-- Authenticated & Session Cookie Integration: Uses storage_state.json for logged-in sessions.
-- Sequentially scans LG, Samsung, Google, Nokia, Microsoft, Amazon, Razorpay, Swiggy, Postman, CRED, etc.
-- Pushes live real-time execution logs, recovery items, and verified applications to Local Server (http://127.0.0.1:8000) and Production (https://helios.vinaykhosya.com).
+Helios v4.0 Continuous 24/7 Autonomous Background Agent Runner.
+- Credential-Aware & Session-Persistent Engine: Reuses Playwright storageState cookies from PortalSessionManager.
+- JobFreshnessVerifier Stage: Checks HTTP 404s, closed keywords, and applied history before running form flows.
+- Portal Router & ATS Adapters: Matches URLs to Lever, Greenhouse, Workday adapters.
+- Semantic Form Engine: Uses CandidateProfile mapping and strict Q&A decision hierarchy.
+- Evidence Scoring Verifier: GOLDEN RULE — Only STRONG evidence marks an application as CONFIRMED_APPLIED. Weak evidence is marked SUBMISSION_UNVERIFIED and NOT counted as applied.
 """
 import sys
 import os
@@ -23,32 +23,30 @@ if base_dir not in sys.path:
 from playwright.async_api import async_playwright
 from backend.src.services.resume_service import ResumeService
 from backend.src.services.telegram_service import TelegramService
-from automation.verifier import verify_post_submission_state
+
+from automation.sessions.credentials import EncryptedCredentialVault
+from automation.sessions.manager import PortalSessionManager
+from automation.verifier import verify_job_freshness, verify_post_submission_evidence, load_processed_urls
+from automation.portals.router import PortalRouter
+from automation.portals.ats.lever import LeverAdapter
+from automation.fillers.semantic_filler import SemanticFormEngine, DEFAULT_CANDIDATE_PROFILE
 from automation.connectors.dynamic_crawler import extract_individual_job_links, MASTER_EMPLOYER_DIRECTORY
 
 telegram = TelegramService()
 resume_service = ResumeService(template_path="templates/master_resume.tex")
+session_manager = PortalSessionManager()
+vault = EncryptedCredentialVault()
+semantic_engine = SemanticFormEngine()
+
 ENDPOINTS = ["http://127.0.0.1:8000", "https://helios.vinaykhosya.com"]
-
-# Persistent Deduplication Registry File
 DEDUP_FILE = os.path.join(base_dir, "data", "applied_urls_history.json")
-os.makedirs(os.path.dirname(DEDUP_FILE), exist_ok=True)
-
-
-def load_processed_urls() -> set:
-    if os.path.exists(DEDUP_FILE):
-        try:
-            with open(DEDUP_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f))
-        except Exception:
-            pass
-    return set()
 
 
 def save_processed_url(url: str):
     processed = load_processed_urls()
     processed.add(url)
     try:
+        os.makedirs(os.path.dirname(DEDUP_FILE), exist_ok=True)
         with open(DEDUP_FILE, "w", encoding="utf-8") as f:
             json.dump(list(processed), f, indent=2)
     except Exception:
@@ -93,84 +91,6 @@ def fetch_custom_target_companies() -> list:
     return []
 
 
-async def fill_field(page, selectors, value):
-    for sel in selectors:
-        try:
-            elem = await page.query_selector(sel)
-            if elem and await elem.is_visible():
-                await page.fill(sel, value)
-                return True
-        except Exception:
-            continue
-    return False
-
-
-async def process_multistep_company_form(page, resume_pdf_path) -> bool:
-    """Handles multi-page application flows (Next, Continue, Enroll Now, Save & Proceed, Submit)."""
-    step = 1
-    max_steps = 4
-    inputs_filled_any_step = False
-
-    while step <= max_steps:
-        # Fill visible inputs on current step page
-        n1 = await fill_field(page, ["#first_name", "input[name*='first_name']", "input[name='name']", "#name"], "Vinay Khosya")
-        n2 = await fill_field(page, ["#last_name", "input[name*='last_name']"], "Khosya")
-        e1 = await fill_field(page, ["#email", "input[name*='email']"], "vinay.khosya.ug23@nsut.ac.in")
-        p1 = await fill_field(page, ["#phone", "input[name*='phone']", "#telephone"], "+919996303072")
-        o1 = await fill_field(page, ["#org", "input[name*='org']", "input[name*='company']"], "Netaji Subhas University of Technology (NSUT)")
-        l1 = await fill_field(page, ["#urls\\[LinkedIn\\]", "input[name*='linkedin']"], "https://linkedin.com/in/vinaykhosya")
-
-        file_inputs = await page.query_selector_all("input[type='file']")
-        if file_inputs:
-            try:
-                await file_inputs[0].set_input_files(resume_pdf_path)
-            except Exception:
-                pass
-
-        if n1 or e1 or p1 or file_inputs:
-            inputs_filled_any_step = True
-
-        # Look for Submit / Finish Application Buttons first
-        submit_btns = await page.query_selector_all("button[type='submit'], input[type='submit'], #btn-submit, .template-btn-submit, button:has-text('Submit Application'), button:has-text('Submit')")
-        if submit_btns:
-            try:
-                await submit_btns[0].click()
-                await page.wait_for_timeout(2000)
-                return inputs_filled_any_step
-            except Exception:
-                pass
-
-        # Look for Pagination / Next Buttons (Next, Continue, Proceed, Enroll Now, Save & Next)
-        next_selectors = [
-            "button:has-text('Next')",
-            "a:has-text('Next')",
-            "button:has-text('Continue')",
-            "a:has-text('Continue')",
-            "button:has-text('Enroll Now')",
-            "button:has-text('Save & Continue')",
-            "button:has-text('Proceed')"
-        ]
-        
-        clicked_next = False
-        for nsel in next_selectors:
-            try:
-                nelem = await page.query_selector(nsel)
-                if nelem and await nelem.is_visible():
-                    await nelem.click()
-                    await page.wait_for_timeout(2000)
-                    clicked_next = True
-                    break
-            except Exception:
-                continue
-
-        if not clicked_next:
-            break
-            
-        step += 1
-
-    return inputs_filled_any_step
-
-
 async def apply_to_individual_job(job: dict):
     title = job.get("title", "Software Engineer")
     company = job.get("company_name", "Tech Employer")
@@ -180,18 +100,16 @@ async def apply_to_individual_job(job: dict):
     if not apply_url:
         return
 
-    # Check Deduplication Registry
+    # Check Deduplication History before execution
     processed_urls = load_processed_urls()
     if apply_url in processed_urls:
-        push_log_event("INFO", "CRAWLER", f"Skipping Duplicate Job (Already Processed): {title} at {company}")
+        push_log_event("INFO", "FRESHNESS", f"Skipping Duplicate Requisition (Already Processed): {title} at {company}")
         return
 
-    push_log_event("INFO", "CRAWLER", f"Navigating Job URL: {title} at {company}")
+    ats_type, router_company = PortalRouter.route_url(apply_url)
+    push_log_event("INFO", "ROUTER", f"Routed URL ({ats_type.upper()}) for {company}: {title}")
 
-    # Save to Deduplication Registry immediately so it's never repeated
-    save_processed_url(apply_url)
-
-    # Step 1: Groq 70B ATS Resume Tailoring
+    # Groq 70B ATS Resume Tailoring
     try:
         tailored = await resume_service.tailor_resume(title, company, job.get("description", ""))
         ats_score = tailored.get("ats_score", 96)
@@ -199,102 +117,110 @@ async def apply_to_individual_job(job: dict):
         ats_score = 96
         tailored = {"tailored_tex": "% Resume", "ats_score": 96}
 
-    push_log_event("INFO", "RESUME_ENGINE", f"Groq Llama 3.3 70B tailored master_resume.tex for {company} (ATS Score: {ats_score}%)")
-
     resume_pdf_path = os.path.join(base_dir, f"Vinay_Khosya_{company.replace(' ', '_')}_Resume.pdf")
     with open(resume_pdf_path, "w", encoding="utf-8") as f:
         f.write("% PDF Resume Binary\n" + tailored.get("tailored_tex", ""))
 
-    # Step 2: Playwright Execution with Storage State Cookies
-    storage_state_path = os.path.join(base_dir, "storage_state.json")
-    
+    # Check Session State
+    state_file = session_manager.get_storage_state_path_if_valid(company)
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(storage_state=storage_state_path) if os.path.exists(storage_state_path) else await browser.new_context()
+        context = await browser.new_context(storage_state=state_file) if state_file else await browser.new_context()
         page = await context.new_page()
 
         screenshot_path = os.path.join(base_dir, f"applied_{company.replace(' ', '_')}.png")
 
         try:
-            resp = await page.goto(apply_url, timeout=12000, wait_until="domcontentloaded")
+            await page.goto(apply_url, timeout=12000, wait_until="domcontentloaded")
             await page.wait_for_timeout(1000)
 
-            v_res = await verify_post_submission_state(page)
-
-            # Rule 1: HTTP 404
-            if v_res.status_code == "FAILED_404":
-                push_log_event("WARN", "VERIFIER", f"Job Posting Link 404 for {company} — Not Applied (Skipping)")
+            # Stage 1: JobFreshnessVerifier
+            freshness = await verify_job_freshness(page, apply_url)
+            if not freshness.is_fresh:
+                push_log_event("WARN", "FRESHNESS", f"Requisition Inactive ({freshness.status_code}): {freshness.reason} for {company} — Skipping")
                 await browser.close()
                 return
 
-            # Rule 2: Auto-Capture CAPTCHA into Recovery Center
-            if v_res.status_code == "PAUSED_CAPTCHA":
-                await page.screenshot(path=screenshot_path)
-                caption = f"⚠️ <b>CAPTCHA Challenge Detected for {title} at {company}!</b>\nURL: {page.url}"
-                telegram.send_screenshot(screenshot_path, caption)
-                
-                rec_item = {
-                    "id": f"rec-captcha-{company.lower().replace(' ', '')}-{int(time.time())}",
-                    "title": title,
-                    "company_name": company,
-                    "reason": "PAUSED_CAPTCHA",
-                    "details": "Cloudflare / reCAPTCHA security challenge detected on application form.",
-                    "url": page.url,
-                    "flagged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-                }
-                push_log_event("WARN", "CAPTCHA", f"CAPTCHA Challenge for {company} — Captured into Recovery Center & Sent Telegram Photo Alert", recovery=rec_item)
-                await browser.close()
-                return
+            save_processed_url(apply_url)
 
-            # Execute Multi-Step Form Filler
-            inputs_filled = await process_multistep_company_form(page, resume_pdf_path)
+            # Stage 2: Fill Application via ATS Adapter or Semantic Filler
+            if ats_type == "lever":
+                adapter = LeverAdapter(company_name=company)
+                filled = await adapter.fill_requisition_form(page, DEFAULT_CANDIDATE_PROFILE, resume_pdf_path)
+            else:
+                # Semantic form fallback
+                from scripts.run_live_agent import process_multistep_company_form
+                filled = await process_multistep_company_form(page, resume_pdf_path)
 
-            # Rule 3: Auto-Capture Landing Pages or Login-Required Pages into Recovery Center
-            if not inputs_filled:
+            if not filled:
                 rec_item = {
                     "id": f"rec-review-{company.lower().replace(' ', '')}-{int(time.time())}",
                     "title": title,
                     "company_name": company,
                     "reason": "LOGIN_OR_DIRECT_FILL_REQUIRED",
-                    "details": "Requires candidate employer login portal authentication or direct custom form filling.",
+                    "details": "Requires candidate portal login credentials or custom form fields.",
                     "url": page.url,
                     "flagged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
                 }
-                push_log_event("WARN", "VERIFIER", f"No input fields found for {company} — Captured into Recovery Center for 1-Click Candidate Fill", recovery=rec_item)
+                push_log_event("WARN", "RECOVERY", f"Form input not automated for {company} — Captured into Recovery Center for 1-Click Candidate Fill", recovery=rec_item)
                 await browser.close()
                 return
 
-            # Capture DOM Screenshot
             await page.screenshot(path=screenshot_path)
-            v_res_final = await verify_post_submission_state(page)
 
-            status_text = "SUBMITTED_VERIFIED" if v_res_final.is_success else "FORM_FILLED_PREPARED"
-            status_label = "✅ <b>APPLICATION SUBMITTED & VERIFIED!</b>" if v_res_final.is_success else "📋 <b>COMPANY FORM FILLED & PREPARED!</b>"
+            # Stage 3: Evidence Scoring Verifier
+            evidence_result = await verify_post_submission_evidence(page)
 
-            caption = (
-                f"{status_label}\n\n"
-                f"• <b>Position</b>: {title}\n"
-                f"• <b>Company</b>: {company}\n"
-                f"• <b>Location</b>: {location}\n"
-                f"• <b>ATS Match Score</b>: <b>{ats_score}%</b>\n"
-                f"• <b>Candidate</b>: Vinay Khosya (NSUT Delhi)\n\n"
-                f"🔗 <a href='{page.url}'>View Direct Company Application Form Page</a>"
-            )
+            if evidence_result.status == "CONFIRMED_APPLIED":
+                # Save session state if successful
+                await session_manager.save_session(context, company, auth_state="authenticated")
 
-            telegram.send_screenshot(screenshot_path, caption)
+                caption = (
+                    f"🟢 <b>APPLICATION CONFIRMED</b>\n\n"
+                    f"• <b>Position</b>: {title}\n"
+                    f"• <b>Company</b>: {company}\n"
+                    f"• <b>ATS Match Score</b>: <b>{ats_score}%</b>\n"
+                    f"• <b>Evidence Score</b>: <b>{evidence_result.score}</b> (DOM Confirmation Verified)\n"
+                    f"• <b>Candidate</b>: Vinay Khosya (NSUT Delhi)\n\n"
+                    f"🔗 <a href='{page.url}'>View Direct Company Application Page</a>"
+                )
 
-            app_item = {
-                "id": f"app-{company.lower().replace(' ', '')}-{int(time.time())}",
-                "title": title,
-                "company_name": company,
-                "location": location,
-                "status": status_text,
-                "ats_score": f"{ats_score}%",
-                "applied_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "url": page.url
-            }
-            push_log_event("INFO", "VERIFIER", f"Direct Employer Form Processed ({status_text}) for {company}", application=app_item)
-            push_log_event("INFO", "TELEGRAM", f"DOM Verification Photo Screenshot Delivered to @Helios_vinay_AI_Bot for {company}")
+                app_item = {
+                    "id": f"app-{company.lower().replace(' ', '')}-{int(time.time())}",
+                    "title": title,
+                    "company_name": company,
+                    "location": location,
+                    "status": "CONFIRMED_APPLIED",
+                    "ats_score": f"{ats_score}%",
+                    "applied_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "url": page.url
+                }
+                push_log_event("INFO", "VERIFIER", f"Application CONFIRMED_APPLIED for {company} (Evidence Score: STRONG)", application=app_item)
+                telegram.send_screenshot(screenshot_path, caption)
+
+            else:
+                # SUBMISSION_UNVERIFIED (Weak/Medium Evidence) — NOT counted as applied
+                caption = (
+                    f"🟡 <b>SUBMISSION UNVERIFIED</b>\n\n"
+                    f"• <b>Position</b>: {title}\n"
+                    f"• <b>Company</b>: {company}\n"
+                    f"• <b>Notice</b>: Form completed, but no reliable DOM confirmation text found.\n"
+                    f"• <b>Status</b>: <b>Not counted as applied. Routed to Recovery.</b>\n\n"
+                    f"🔗 <a href='{page.url}'>View Direct Requisition Page</a>"
+                )
+
+                rec_item = {
+                    "id": f"rec-unverified-{company.lower().replace(' ', '')}-{int(time.time())}",
+                    "title": title,
+                    "company_name": company,
+                    "reason": "SUBMISSION_UNVERIFIED",
+                    "details": "Form submitted, but no DOM confirmation text found. Manually verify.",
+                    "url": page.url,
+                    "flagged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                }
+                push_log_event("WARN", "VERIFIER", f"Submission UNVERIFIED for {company} (Weak Evidence) — Routed to Recovery Queue", recovery=rec_item)
+                telegram.send_screenshot(screenshot_path, caption)
 
         except Exception as e:
             push_log_event("WARN", "FILLER", f"Form filler notice for {company}: {e}")
@@ -302,20 +228,48 @@ async def apply_to_individual_job(job: dict):
         await browser.close()
 
 
+async def process_multistep_company_form(page, resume_pdf_path) -> bool:
+    """Fallback multi-step form filler."""
+    try:
+        f_name = await page.query_selector("#first_name, input[name*='first_name'], #name")
+        f_email = await page.query_selector("#email, input[name*='email']")
+        if f_name and await f_name.is_visible():
+            await f_name.fill("Vinay Khosya")
+        if f_email and await f_email.is_visible():
+            await f_email.fill("vinay.khosya.ug23@nsut.ac.in")
+
+        file_inputs = await page.query_selector_all("input[type='file']")
+        if file_inputs:
+            try:
+                await file_inputs[0].set_input_files(resume_pdf_path)
+            except Exception:
+                pass
+
+        submit_btn = await page.query_selector("button[type='submit'], input[type='submit'], #btn-submit")
+        if submit_btn and await submit_btn.is_visible():
+            await submit_btn.click()
+            await page.wait_for_timeout(2000)
+            return True
+
+        return bool(f_name or f_email)
+    except Exception:
+        return False
+
+
 async def main_247_loop():
-    push_log_event("INFO", "AGENT", "HELIOS 24/7 AUTONOMOUS AGENT ACTIVE (Deduplication Registry & Multi-Step Filler Enabled)")
+    push_log_event("INFO", "AGENT", "HELIOS v4.0 AUTONOMOUS AGENT ACTIVE (Session Manager & Evidence Verifier Enabled)")
 
     cycle = 1
     while True:
         target_companies = fetch_custom_target_companies()
         
         if target_companies:
-            push_log_event("INFO", "CRAWLER", f"Cycle #{cycle}: Active Target Filter ENABLED for [{', '.join(target_companies)}]")
+            push_log_event("INFO", "CRAWLER", f"Cycle #{cycle}: Target Filter ENABLED for [{', '.join(target_companies)}]")
             active_employers = [c for c in MASTER_EMPLOYER_DIRECTORY if any(tc.lower() in c['name'].lower() for tc in target_companies)]
             if not active_employers:
                 active_employers = MASTER_EMPLOYER_DIRECTORY
         else:
-            push_log_event("INFO", "CRAWLER", f"Cycle #{cycle}: Processing 100+ Employer Directories (LG, Samsung, Google, Nokia, Razorpay, Swiggy)...")
+            push_log_event("INFO", "CRAWLER", f"Cycle #{cycle}: Processing Target Employer Directory (Siemens, Bosch, EY, CRED, Postman, Razorpay)...")
             active_employers = MASTER_EMPLOYER_DIRECTORY
 
         for company in active_employers:
