@@ -1,0 +1,206 @@
+"""
+scripts/run_v5_agent.py
+
+Helios v5.0 Complete Universal Vertical Slice Runner.
+Integrates the complete v5 Universal Portal Intelligence Pipeline:
+Canonical ApplicationKey Dedup -> PortalDetector -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
+
+CLI Flags:
+  --company CRED --url <requisition_url> [--dry-run | --live]
+  Default execution mode is DRY RUN (--dry-run).
+"""
+import sys
+import os
+import argparse
+import asyncio
+import json
+import time
+
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if base_dir not in sys.path:
+    sys.path.insert(0, base_dir)
+
+from playwright.async_api import async_playwright
+from backend.src.services.resume_service import ResumeService
+from backend.src.services.telegram_service import TelegramService
+
+from automation.sessions.credentials import EncryptedCredentialVault
+from automation.sessions.manager import PortalSessionManager
+from automation.verifier import verify_job_freshness, get_canonical_requisition_key, save_processed_key
+from automation.portals.detector import PortalDetector
+from automation.portals.strategies.lever import LeverStrategy
+from automation.portals.strategies.generic import GenericStrategy
+from automation.fillers.semantic_filler import DEFAULT_CANDIDATE_PROFILE
+
+telegram = TelegramService()
+resume_service = ResumeService(template_path="templates/master_resume.tex")
+session_manager = PortalSessionManager()
+vault = EncryptedCredentialVault()
+
+
+def safe_print(msg: str):
+    print(msg.encode("ascii", errors="ignore").decode("ascii"))
+
+
+async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
+    safe_print("=" * 70)
+    safe_print(f"[HELIOS v5.0] UNIVERSAL AGENT RUNNER — MODE: {mode.upper()}")
+    safe_print("=" * 70)
+
+    candidate_email = "vinay.khosya.ug23@nsut.ac.in"
+    canon_key = get_canonical_requisition_key(target_url)
+    safe_print(f"Target URL: {target_url}")
+    safe_print(f"Canonical Identity Key: {canon_key}")
+
+    # Step 1: Encrypt Credentials in Vault
+    vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
+    meta = vault.list_credentials_metadata()
+    safe_print(f"[Step 1] Vault Credentials Initialized (Fernet AES-128): {meta}")
+
+    forensic_log = {
+        "canonical_application_key": canon_key,
+        "company": company,
+        "target_url": target_url,
+        "mode": mode,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "portal_identity": None,
+        "freshness_check": None,
+        "page_schema": None,
+        "semantic_mapping": None,
+        "execution_plan": None,
+        "evidence_payload": None,
+        "final_status": "PENDING"
+    }
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        # Restore storageState session if available
+        restored_state = session_manager.get_storage_state_path_if_valid(company.lower())
+        context = await browser.new_context(storage_state=restored_state)
+        page = await context.new_page()
+
+        safe_print("\n[Step 2] Navigating Requisition URL...")
+        await page.goto(target_url, timeout=15000, wait_until="domcontentloaded")
+        await page.wait_for_timeout(1000)
+
+        # Freshness Check
+        freshness = await verify_job_freshness(page, target_url)
+        forensic_log["freshness_check"] = {
+            "is_fresh": freshness.is_fresh,
+            "status_code": freshness.status_code,
+            "reason": freshness.reason
+        }
+        safe_print(f"[Step 2] Freshness Check: is_fresh={freshness.is_fresh}, status_code={freshness.status_code}")
+
+        if not freshness.is_fresh and freshness.status_code == "DUPLICATE":
+            safe_print("[NOTICE] Requisition detected as DUPLICATE. Skipping application flow!")
+            forensic_log["final_status"] = "SKIPPED_DUPLICATE"
+            await browser.close()
+            return forensic_log
+
+        # Step 3: Portal Detector
+        portal_id = await PortalDetector.detect(page)
+        forensic_log["portal_identity"] = {
+            "type": portal_id.type,
+            "company": portal_id.company,
+            "confidence": portal_id.confidence
+        }
+        safe_print(f"[Step 3] Portal Detector: type='{portal_id.type}', company='{portal_id.company}', confidence={portal_id.confidence}")
+
+        # Step 4: Resume Tailoring
+        safe_print("Tailoring Resume via Groq Llama 3.3 70B...")
+        tailored = await resume_service.tailor_resume("Machine Learning Engineer", company, "Python, PyTorch, Deep Learning")
+        resume_pdf_path = os.path.join(base_dir, f"Vinay_Khosya_{company}_v5_Resume.pdf")
+        with open(resume_pdf_path, "w", encoding="utf-8") as f:
+            f.write("% PDF Binary\n" + tailored.get("tailored_tex", ""))
+
+        # Step 5: ATS Strategy Execution (Lever vs Generic)
+        if portal_id.type == "lever":
+            strategy = LeverStrategy(company_name=company.lower())
+        else:
+            strategy = GenericStrategy(company_name=company.lower())
+
+        # Set execution mode on ActionExecutor inside strategy
+        strategy.executor.mode = mode
+
+        plan, evidence = await strategy.execute_application(
+            page,
+            candidate_profile=DEFAULT_CANDIDATE_PROFILE,
+            resume_pdf_path=resume_pdf_path
+        )
+
+        forensic_log["execution_plan"] = plan.to_dict()
+        forensic_log["evidence_payload"] = {
+            "submit_clicked": evidence.submit_clicked,
+            "live_dom_confirmation": evidence.live_dom_confirmation,
+            "application_id": evidence.application_id,
+            "application_id_source": evidence.application_id_source,
+            "url_before": evidence.url_before,
+            "url_after": evidence.url_after,
+            "actions_executed": [
+                {
+                    "action_id": a.action_id,
+                    "action_type": a.action_type.value,
+                    "target_semantic": a.target_semantic.value,
+                    "succeeded": a.succeeded,
+                    "error": a.error
+                }
+                for a in evidence.actions
+            ]
+        }
+
+        # Step 6: Final Status Determination & Deduplication Recording
+        if evidence.is_strong_evidence():
+            forensic_log["final_status"] = "CONFIRMED_APPLIED"
+            safe_print("[RESULT] Application status: CONFIRMED_APPLIED (STRONG Evidence)")
+            save_processed_key(target_url)
+            await session_manager.save_session(context, company.lower(), auth_state="authenticated")
+        elif plan.recovery_required:
+            forensic_log["final_status"] = "RECOVERY_REQUIRED"
+            safe_print(f"[RESULT] Application status: RECOVERY_REQUIRED (Reason: {plan.recovery_reason.value})")
+        else:
+            forensic_log["final_status"] = "SUBMISSION_UNVERIFIED"
+            safe_print(f"[RESULT] Application status: SUBMISSION_UNVERIFIED (Mode: {mode.upper()})")
+
+        screenshot_path = os.path.join(base_dir, f"v5_agent_execution_{mode}.png")
+        await page.screenshot(path=screenshot_path)
+
+        # Step 7: Telegram Notification Dispatch
+        mode_tag = "🧪 <b>DRY RUN PLAN</b>" if mode == "dry_run" else "🟢 <b>LIVE SUBMISSION</b>"
+        caption = (
+            f"{mode_tag}\n\n"
+            f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
+            f"• <b>Canonical Key</b>: <code>{canon_key}</code>\n"
+            f"• <b>Mode</b>: <b>{mode.upper()}</b>\n"
+            f"• <b>Planned Actions</b>: {len(plan.actions)}\n"
+            f"• <b>Submit Clicked</b>: <b>{evidence.submit_clicked}</b>\n"
+            f"• <b>Final Status</b>: <b>{forensic_log['final_status']}</b>\n"
+            f"• <b>Recovery Required</b>: <b>{plan.recovery_required}</b>\n"
+            f"• <b>Candidate</b>: Vinay Khosya (NSUT Delhi)\n\n"
+            f"🔗 <a href='{target_url}'>View Requisition URL</a>"
+        )
+        telegram.send_screenshot(screenshot_path, caption)
+        safe_print("[TELEGRAM] Verification Alert Delivered to @Helios_vinay_AI_Bot!")
+
+        await browser.close()
+
+    log_path = os.path.join(base_dir, f"v5_forensic_execution_record_{mode}.json")
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(forensic_log, f, indent=2)
+    safe_print(f"\n[FORENSIC RECORD persistent JSON written to {log_path}]")
+
+    safe_print("\n" + "=" * 70)
+    safe_print("[SUCCESS] HELIOS v5.0 PIPELINE EXECUTION COMPLETED!")
+    safe_print("=" * 70)
+    return forensic_log
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Helios v5.0 Universal Agent Runner")
+    parser.add_argument("--company", type=str, default="CRED", help="Company Name")
+    parser.add_argument("--url", type=str, default="https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5", help="Requisition URL")
+    parser.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
+
+    args = parser.parse_args()
+    exec_mode = "live" if args.live else "dry_run"
+    asyncio.run(run_v5_pipeline(args.company, args.url, mode=exec_mode))
