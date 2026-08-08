@@ -1,0 +1,63 @@
+{
+  "discovery": {
+    "searched_company": "CRED",
+    "search_query": "Software Engineer",
+    "job_title": "Software Engineer",
+    "requisition_id": "UNKNOWN",
+    "predicted_ats": "UNKNOWN"
+  },
+  "job": {
+    "title": "Software Engineer",
+    "company": "CRED",
+    "requisition_url": "https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5/apply",
+    "canonical_application_key": "lever:cred:7e4d512e-fc89-40fd-9a30-46c5459bbea5"
+  },
+  "application_destination": {
+    "resolved": true,
+    "url": "https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5/apply",
+    "redirect_chain": [
+      "https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5/apply"
+    ],
+    "apply_control_found": false
+  },
+  "portal": {
+    "reached": true,
+    "identity_verified": true,
+    "verified_live_ats": "LEVER",
+    "type": "lever",
+    "company": "cred"
+  },
+  "authentication": {
+    "required": true,
+    "successful": true
+  },
+  "pages": {
+    "total": 1,
+    "completed": 1
+  },
+  "execution": {
+    "application_flow_started": true,
+    "fields_filled": 5,
+    "questions_answered": 0,
+    "resume_uploaded": true,
+    "unresolved_fields": [],
+    "submit_clicked": false
+  },
+  "submission": {
+    "attempted": true,
+    "clicked": false,
+    "post_submit_url": "https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5/apply",
+    "post_submit_title": "CRED - machine learning engineer",
+    "post_submit_body_text": "machine learning engineer\nHyderabadPrefr \u2013 Engineering /Full Time /On-Site\nSUBMIT YOUR APPLICATION\nResume/CV\n\u2731\nVINAY_KHOSYA_CRED_V5_RESUME.PDF\nAnalyzing resume...\nFull name\n\u2731\nEmail\n\u2731\nPhone\n\u2731\nCurrent l",
+    "confirmation_detected": false,
+    "application_id": null,
+    "application_id_source": "NONE"
+  },
+  "email": {
+    "checked": false,
+    "confirmation_found": false,
+    "status": "EMAIL_CONFIRMATION_PENDING"
+  },
+  "validation_level": "ONE_SHOT_LIVE_PENDING",
+  "final_status": "APPLICATION_BLOCKED"
+}
