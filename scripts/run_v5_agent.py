@@ -113,13 +113,23 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         "company": company,
         "target_url": target_url,
         "mode": mode,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "validation_level": validation_level,
-        "live_portal_verified": False,
-        "portal_identity": None,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "portal": {
+            "reached": False,
+            "identity_verified": False,
+            "type": None,
+            "company": None
+        },
+        "submission": {
+            "attempted": False,
+            "clicked": False,
+            "dom_confirmation": False,
+            "application_id": None,
+            "application_id_source": "NONE"
+        },
         "freshness_check": None,
         "execution_plan": None,
-        "evidence_payload": None,
         "final_status": "PENDING"
     }
 
@@ -133,6 +143,8 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         safe_print("\n[Step 2] Navigating Requisition URL...")
         await page.goto(target_url, timeout=15000, wait_until="domcontentloaded")
         await page.wait_for_timeout(1000)
+
+        forensic_log["portal"]["reached"] = True
 
         # Freshness Check
         freshness = await verify_job_freshness(page, target_url)
@@ -151,11 +163,9 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
 
         # Step 3: Portal Detector
         portal_id = await PortalDetector.detect(page)
-        forensic_log["portal_identity"] = {
-            "type": portal_id.type,
-            "company": portal_id.company,
-            "confidence": portal_id.confidence
-        }
+        forensic_log["portal"]["type"] = portal_id.type
+        forensic_log["portal"]["company"] = portal_id.company
+        forensic_log["portal"]["identity_verified"] = portal_id.confidence >= 0.90
         safe_print(f"[Step 3] Portal Detector: type='{portal_id.type}', company='{portal_id.company}', confidence={portal_id.confidence}")
 
         # Step 4: Resume Tailoring
@@ -185,29 +195,17 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         )
 
         forensic_log["execution_plan"] = plan.to_dict()
-        forensic_log["evidence_payload"] = {
-            "submit_clicked": evidence.submit_clicked,
-            "live_dom_confirmation": evidence.live_dom_confirmation,
+        forensic_log["submission"] = {
+            "attempted": mode == "live",
+            "clicked": evidence.submit_clicked,
+            "dom_confirmation": evidence.live_dom_confirmation,
             "application_id": evidence.application_id,
-            "application_id_source": evidence.application_id_source,
-            "url_before": evidence.url_before,
-            "url_after": evidence.url_after,
-            "actions_executed": [
-                {
-                    "action_id": a.action_id,
-                    "action_type": a.action_type.value,
-                    "target_semantic": a.target_semantic.value,
-                    "succeeded": a.succeeded,
-                    "error": a.error
-                }
-                for a in evidence.actions
-            ]
+            "application_id_source": evidence.application_id_source
         }
 
         # Step 6: Final Status Determination & Validation Hierarchy Enforcement
         if evidence.is_strong_evidence() and mode == "live":
             forensic_log["validation_level"] = "LIVE_SUBMISSION_VERIFIED"
-            forensic_log["live_portal_verified"] = True
             forensic_log["final_status"] = "CONFIRMED_APPLIED"
             save_processed_key(target_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
