@@ -1,0 +1,263 @@
+{
+  "timestamp": "2026-08-08T19:25:44Z",
+  "company": "NVIDIA",
+  "job_url": "https://jobs.nvidia.com/careers/job/893392590814",
+  "final_url": "https://jobs.nvidia.com/careers/job/893392590814",
+  "page_title": "Senior System Software Engineer - Software Development Kit | NVIDIA Corporation",
+  "body_text_length": 5986,
+  "body_text_snippet": "Skip to main content\nJoin Talent Network\nSign In\nSingle Position\nView All Jobs\nSenior System Software Engineer - Software Development Kit\nUS, CA, Santa Clara\nApply Now\nFind out how well you match with this job\nUpload Your Resume (English)\nJob Description\nCompany\nJob Requisition ID\nJR2010588\nJob Category\nEngineering\nTime Type\nFull time\n\nAt NVIDIA, we\u2019re motivated by the continuous pursuit of innovation and excellence. As a Senior System Software Engineer, you\u2019ll become a part of a top-tier team that\u2019s advancing technology in AI, imaging solutions, and computing. Situated in Santa Clara, CA, you\u2019ll be at the core of our ambitious projects, reshaping the future of computing. If you\u2019re enthusiastic about groundbreaking technology and ready to make a substantial impact, this is the role for you!\n\nWe are now hiring a Systems Software Engineer for the Tegra Solutions Engineering team focusing on Camera, Multimedia and Graphics for the embedded platform architectures.\n\nWhat you\u2019ll be doing:\n\nWork with product teams and deliver work class platform solutions\n\nCollaborate with software engineers, hardware and arch teams to design, develop, validate and optimize software on NVIDIA's DRIVE self-driving platform\n\nDirectly engage with customers and partners to productize DRIVE platforms\n\nDevelop and maintain drivers in the camera framework to enable and bring-up camera sensors on automotive platforms\n\nFamiliarity with imaging pipeline, debug and support Image Quality evaluations\n\nOptimize performance for various graphics and multimedia components in the driving platform stack\n\nEngage directly with customers/partners to gather requirements, to develop and to optimize their exquisite products\n\nWhat we need to see:\n\nBS or MS in Computer Science, Computer Engineering or closely related field (or equivalent experience)\n\n5+ years of hands-on experience in system software development. with 2+ years of experience on embedded systems, with focus on Imaging pipeline and/or Graphics pipeline",
+  "submit_scan_found": true,
+  "submit_scan_diagnostic": null,
+  "best_candidate": {
+    "selector": "button",
+    "text": "Apply Now",
+    "role": "button",
+    "confidence": 0.6,
+    "visible": true,
+    "enabled": true,
+    "disabled_attr": false,
+    "aria_disabled": false,
+    "frame_url": null,
+    "bounding_box": {
+      "x": 24,
+      "y": 390,
+      "width": 150,
+      "height": 44
+    },
+    "reasoning": [
+      "Exact text match: 'apply now'",
+      "Element role='button'"
+    ]
+  },
+  "total_interactive_controls_found": 10,
+  "interactive_controls": [
+    {
+      "tag": "button",
+      "text": "Apply Now",
+      "type": "",
+      "role": "",
+      "aria_label": "",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "action-2lm8g button-module_button__WDVlB button-module_button-primary__pu681 button-module_button-large__TqDj0 button-module_pill-shape__vL1xQ",
+      "bounding_box": {
+        "x": 24,
+        "y": 390,
+        "width": 150,
+        "height": 44
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Share position, Senior System Software Engineer - Software Development Kit",
+      "type": "",
+      "role": "button",
+      "aria_label": "Share position, Senior System Software Engineer - Software Development Kit",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-neutral__nlATL button-module_button-medium__Z9ekA button-module_round-shape__4a1Rx button-module_icon-left__l9ikB",
+      "bounding_box": {
+        "x": 1220,
+        "y": 294,
+        "width": 36,
+        "height": 36
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Upload Your Resume (English)",
+      "type": "",
+      "role": "",
+      "aria_label": "Upload Your Resume (English)",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-primary__pu681 button-module_button-medium__Z9ekA button-module_pill-shape__vL1xQ",
+      "bounding_box": {
+        "x": 997.34375,
+        "y": 512,
+        "width": 241.65625,
+        "height": 36
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Job Description",
+      "type": "",
+      "role": "tab",
+      "aria_label": "",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "tabs-module_tab__1K4R3 tabs-module_active__N3c2p",
+      "bounding_box": {
+        "x": 24,
+        "y": 589,
+        "width": 128.9375,
+        "height": 42.390625
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Company",
+      "type": "",
+      "role": "tab",
+      "aria_label": "",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "tabs-module_tab__1K4R3",
+      "bounding_box": {
+        "x": 152.9375,
+        "y": 589,
+        "width": 100.9375,
+        "height": 42.390625
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Previous similar jobs",
+      "type": "",
+      "role": "",
+      "aria_label": "Previous similar jobs",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": true,
+      "aria_disabled": true,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-system-ui__X4s-1 button-module_button-small__RiWou button-module_round-shape__4a1Rx button-module_disabled__c0pm5 button-module_icon-left__l9ikB",
+      "bounding_box": {
+        "x": 1188,
+        "y": 2318.578125,
+        "width": 28,
+        "height": 28
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Next similar jobs",
+      "type": "",
+      "role": "",
+      "aria_label": "Next similar jobs",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-system-ui__X4s-1 button-module_button-small__RiWou button-module_round-shape__4a1Rx button-module_icon-left__l9ikB",
+      "bounding_box": {
+        "x": 1228,
+        "y": 2318.578125,
+        "width": 28,
+        "height": 28
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Close",
+      "type": "",
+      "role": "",
+      "aria_label": "Close",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-neutral__nlATL button-module_button-medium__Z9ekA button-module_round-shape__4a1Rx button-module_icon-left__l9ikB",
+      "bounding_box": {
+        "x": 852,
+        "y": 232,
+        "width": 36,
+        "height": 36
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Cancel",
+      "type": "",
+      "role": "",
+      "aria_label": "",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-neutral__nlATL button-module_button-medium__Z9ekA button-module_pill-shape__vL1xQ",
+      "bounding_box": {
+        "x": 718.203125,
+        "y": 452,
+        "width": 71.828125,
+        "height": 36
+      }
+    },
+    {
+      "tag": "button",
+      "text": "Continue",
+      "type": "",
+      "role": "",
+      "aria_label": "",
+      "aria_labelledby": "",
+      "data_automation_id": "",
+      "data_testid": "",
+      "data_qa": "",
+      "disabled": false,
+      "aria_disabled": false,
+      "visible": true,
+      "classes": "button-module_button__WDVlB button-module_button-primary__pu681 button-module_button-medium__Z9ekA button-module_pill-shape__vL1xQ",
+      "bounding_box": {
+        "x": 798.03125,
+        "y": 452,
+        "width": 89.96875,
+        "height": 36
+      }
+    }
+  ],
+  "iframes": [
+    {
+      "name": "",
+      "url": "https://jobs.nvidia.com/careers/job/893392590814"
+    },
+    {
+      "name": "a-o471fd7hb0d3",
+      "url": "https://www.recaptcha.net/recaptcha/api2/anchor?ar=1&k=6LfwboYUAAAAAJb6QcVuRXi7R9pTqgGKF6TnNzia&co=aHR0cHM6Ly9qb2JzLm52aWRpYS5jb206NDQz&hl=en&v=XOqlk8PL_yVx6IdpLbpXdiLy&size=invisible&anchor-ms=20000&execute-ms=30000&cb=di4egwcu9rse"
+    },
+    {
+      "name": "",
+      "url": "about:blank"
+    },
+    {
+      "name": "",
+      "url": "about:blank"
+    }
+  ]
+}
