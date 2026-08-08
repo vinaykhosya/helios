@@ -2,14 +2,14 @@
 automation/verifier.py
 
 Helios Verification & Evidence Scoring Engine v4.0.
-- JobFreshnessVerifier: Checks HTTP status, job closure text, expiry, and deduplication before running application flows.
+- JobFreshnessVerifier: Checks HTTP status, job closure text, expiry, and Canonical Application Key deduplication before running application flows.
 - EvidenceVerifier: Implements strict Evidence Scoring (STRONG vs WEAK) to enforce the GOLDEN RULE:
-  An application is ONLY marked CONFIRMED_APPLIED if submit_clicked IS TRUE and live portal confirmation DOM/ID is verified.
-  Synthetic test IDs or un-clicked submit buttons MUST NEVER result in CONFIRMED_APPLIED.
+  An application is ONLY marked CONFIRMED_APPLIED if submit_clicked IS TRUE, page state transitioned, and live portal confirmation DOM/ID is verified.
 """
 import os
 import json
 import time
+import urllib.parse
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
 
@@ -30,21 +30,64 @@ class EvidenceResult:
     evidence_details: Dict[str, Any]
 
 
-def load_processed_urls() -> set:
+def get_canonical_requisition_key(url: str) -> str:
+    """
+    Extracts canonical key (portal:company:requisition_id) from URL.
+    Strips query parameters like ?source=linkedin or ?source=indeed.
+    """
+    parsed = urllib.parse.urlparse(url)
+    clean_path = parsed.path.rstrip("/").lower()
+    
+    # Handle Lever URLs (e.g. /company/requisition_id/apply -> company:requisition_id)
+    if "lever.co" in parsed.netloc:
+        parts = [p for p in clean_path.split("/") if p and p != "apply" and p != "thanks"]
+        if len(parts) >= 2:
+            return f"lever:{parts[0]}:{parts[1]}"
+    elif "greenhouse.io" in parsed.netloc:
+        parts = [p for p in clean_path.split("/") if p and p != "apply"]
+        if len(parts) >= 2:
+            return f"greenhouse:{parts[0]}:{parts[-1]}"
+    
+    # Fallback to normalized base URL without query params
+    return f"url:{parsed.netloc}{clean_path}"
+
+
+def load_processed_keys() -> set:
     if os.path.exists(DEDUP_FILE):
         try:
             with open(DEDUP_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f))
+                data = json.load(f)
+                keys = set()
+                for item in data:
+                    if item.startswith("lever:") or item.startswith("greenhouse:") or item.startswith("url:"):
+                        keys.add(item)
+                    else:
+                        keys.add(get_canonical_requisition_key(item))
+                return keys
         except Exception:
             pass
     return set()
 
 
+def save_processed_key(url: str):
+    processed = load_processed_keys()
+    canon_key = get_canonical_requisition_key(url)
+    processed.add(canon_key)
+    try:
+        os.makedirs(os.path.dirname(DEDUP_FILE), exist_ok=True)
+        with open(DEDUP_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(processed), f, indent=2)
+    except Exception:
+        pass
+
+
 async def verify_job_freshness(page, apply_url: str) -> FreshnessResult:
     """Verifies if a job requisition URL is active, not 404, not closed, and not previously applied."""
-    processed = load_processed_urls()
-    if apply_url in processed:
-        return FreshnessResult(is_fresh=False, status_code="DUPLICATE", reason="Requisition URL already in applied history")
+    canon_key = get_canonical_requisition_key(apply_url)
+    processed = load_processed_keys()
+    
+    if canon_key in processed:
+        return FreshnessResult(is_fresh=False, status_code="DUPLICATE", reason=f"Canonical key '{canon_key}' already in applied history")
 
     try:
         title = await page.title()
@@ -152,21 +195,3 @@ async def verify_post_submission_evidence(
             score="WEAK",
             evidence_details={"error": str(e)}
         )
-
-
-# Backward compatibility helper for existing runners
-async def verify_post_submission_state(page):
-    f_res = await verify_job_freshness(page, page.url)
-    if not f_res.is_fresh:
-        class LegacyFreshnessResult:
-            def __init__(self, code):
-                self.status_code = code
-                self.is_success = False
-        return LegacyFreshnessResult(f_res.status_code)
-
-    e_res = await verify_post_submission_evidence(page, submit_clicked=True)
-    class LegacyEvidenceResult:
-        def __init__(self, is_succ):
-            self.status_code = "SUBMITTED_VERIFIED" if is_succ else "FORM_FILLED_PREPARED"
-            self.is_success = is_succ
-    return LegacyEvidenceResult(e_res.status == "CONFIRMED_APPLIED")
