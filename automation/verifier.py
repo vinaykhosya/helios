@@ -51,15 +51,13 @@ def get_canonical_requisition_key(url: str) -> str:
         if len(parts) >= 2:
             return f"greenhouse:{parts[0]}:{parts[-1]}"
 
-    # Handle Workday URLs (e.g. siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/...)
+    # Handle Workday URLs (e.g. siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/Bangalore-India/Software-Engineer_R105492)
     elif "myworkdayjobs.com" in parsed.netloc:
         company = parsed.netloc.split(".")[0]
-        match = re.search(r'/job/([^/]+)', clean_path)
-        if match:
-            return f"workday:{company}:{match.group(1)}"
         parts = [p for p in clean_path.split("/") if p and p not in ["en-us", "job"]]
-        if len(parts) >= 2:
-            return f"workday:{company}:{parts[-1]}"
+        if len(parts) >= 1:
+            req_slug = parts[-1]
+            return f"workday:{company}:{req_slug}"
         return f"workday:{company}:main"
     
     # Fallback to normalized base URL without query params

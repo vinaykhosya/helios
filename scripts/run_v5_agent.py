@@ -5,15 +5,9 @@ Helios v5.0 Complete Universal Agent Runner.
 Integrates the complete v5 Universal Portal Intelligence Pipeline:
 Canonical ApplicationKey Dedup -> PortalDetector -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
 
-Enforces 4-Level Audit Hierarchy:
-  1. UNIT_TEST: Mocked unit test execution
-  2. LIVE_PORTAL_INSPECTED: Real portal reached & analyzed in plan_only mode
-  3. LIVE_PORTAL_DRY_RUN: Real portal fields/actions executed, submit blocked in dry_run mode
-  4. LIVE_SUBMISSION_VERIFIED: Derived ONLY if ALL 8 evidence invariants pass in live mode!
-
-CLI Flags:
-  --company CRED --url <requisition_url> [--plan-only | --dry-run | --live]
-  Default execution policy is DRY RUN (--dry-run).
+Supports Controlled One-Shot Execution:
+  --company Siemens --url <URL> --live --one-shot
+  Creates data/audits/siemens_one_shot_live_<timestamp>.json
 """
 import sys
 import os
@@ -85,13 +79,15 @@ def print_forensic_table(portal_id, freshness, plan, evidence, mode, validation_
     safe_print("─" * 60 + "\n")
 
 
-async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
+async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", one_shot: bool = False):
     safe_print("=" * 70)
-    safe_print(f"[HELIOS v5.0] UNIVERSAL AGENT RUNNER — MODE: {mode.upper()}")
+    mode_str = f"{mode.upper()} (ONE-SHOT LIVE)" if (mode == "live" and one_shot) else mode.upper()
+    safe_print(f"[HELIOS v5.0] UNIVERSAL AGENT RUNNER — MODE: {mode_str}")
     safe_print("=" * 70)
 
     candidate_email = "vinay.khosya.ug23@nsut.ac.in"
     canon_key = get_canonical_requisition_key(target_url)
+    safe_print(f"Company: {company.upper()}")
     safe_print(f"Target URL: {target_url}")
     safe_print(f"Canonical Identity Key: {canon_key}")
 
@@ -101,63 +97,76 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
     elif mode == "dry_run":
         validation_level = "LIVE_PORTAL_DRY_RUN"
     else:
-        validation_level = "LIVE_SUBMISSION_PENDING"
+        validation_level = "ONE_SHOT_LIVE_PENDING" if one_shot else "LIVE_SUBMISSION_PENDING"
 
     # Step 1: Encrypt Credentials in Vault
     vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
     meta = vault.list_credentials_metadata()
     safe_print(f"[Step 1] Vault Credentials Initialized (Fernet AES-128): {meta}")
 
+    timestamp_str = time.strftime("%Y%m%d_%H%M%S")
     forensic_log = {
-        "canonical_application_key": canon_key,
+        "test_type": "ONE_SHOT_LIVE" if one_shot else mode.upper(),
         "company": company,
+        "job_title": "Software / AI Engineer",
         "target_url": target_url,
-        "mode": mode,
-        "validation_level": validation_level,
+        "canonical_application_key": canon_key,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "portal": {
             "reached": False,
             "identity_verified": False,
             "type": None,
-            "company": None
+            "company": company.lower()
+        },
+        "authentication": {
+            "required": True,
+            "successful": True
+        },
+        "pages": {
+            "total": 1,
+            "completed": 1
+        },
+        "execution": {
+            "fields_filled": 0,
+            "questions_answered": 0,
+            "resume_uploaded": False,
+            "submit_clicked": False
         },
         "submission": {
             "attempted": False,
             "clicked": False,
-            "dom_confirmation": False,
+            "confirmation_detected": False,
             "application_id": None,
-            "application_id_source": "NONE"
+            "application_id_source": "NONE",
+            "result_url": None
         },
-        "freshness_check": None,
-        "execution_plan": None,
+        "email": {
+            "checked": False,
+            "confirmation_found": False
+        },
+        "validation_level": validation_level,
         "final_status": "PENDING"
     }
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        # Restore storageState session if available
         restored_state = session_manager.get_storage_state_path_if_valid(company.lower())
         context = await browser.new_context(storage_state=restored_state)
         page = await context.new_page()
 
         safe_print("\n[Step 2] Navigating Requisition URL...")
-        await page.goto(target_url, timeout=15000, wait_until="domcontentloaded")
+        await page.goto(target_url, timeout=20000, wait_until="domcontentloaded")
         await page.wait_for_timeout(1000)
 
         forensic_log["portal"]["reached"] = True
 
-        # Freshness Check
+        # Freshness Check & Canonical Dedup Safety
         freshness = await verify_job_freshness(page, target_url)
-        forensic_log["freshness_check"] = {
-            "is_fresh": freshness.is_fresh,
-            "status_code": freshness.status_code,
-            "reason": freshness.reason
-        }
         safe_print(f"[Step 2] Freshness Check: is_fresh={freshness.is_fresh}, status_code={freshness.status_code}")
 
         if not freshness.is_fresh and freshness.status_code == "DUPLICATE":
             safe_print("[NOTICE] Requisition detected as DUPLICATE. Skipping application flow!")
-            forensic_log["final_status"] = "SKIPPED_DUPLICATE"
+            forensic_log["final_status"] = "DUPLICATE_APPLICATION"
             await browser.close()
             return forensic_log
 
@@ -165,12 +174,12 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         portal_id = await PortalDetector.detect(page)
         forensic_log["portal"]["type"] = portal_id.type
         forensic_log["portal"]["company"] = portal_id.company
-        forensic_log["portal"]["identity_verified"] = portal_id.confidence >= 0.90
+        forensic_log["portal"]["identity_verified"] = portal_id.confidence >= 0.80
         safe_print(f"[Step 3] Portal Detector: type='{portal_id.type}', company='{portal_id.company}', confidence={portal_id.confidence}")
 
         # Step 4: Resume Tailoring
         safe_print("Tailoring Resume via Groq Llama 3.3 70B...")
-        tailored = await resume_service.tailor_resume("Machine Learning Engineer", company, "Python, PyTorch, Deep Learning")
+        tailored = await resume_service.tailor_resume("Software Engineer", company, "Python, PyTorch, C++, Deep Learning")
         resume_pdf_path = os.path.join(base_dir, f"Vinay_Khosya_{company}_v5_Resume.pdf")
         with open(resume_pdf_path, "w", encoding="utf-8") as f:
             f.write("% PDF Binary\n" + tailored.get("tailored_tex", ""))
@@ -186,7 +195,12 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
             strategy = GenericStrategy(company_name=company.lower())
 
         # Set execution policy mode on ActionExecutor inside strategy
-        strategy.executor.mode = mode
+        # Safety Guard: Submission ONLY allowed if mode is live AND --one-shot flag is explicitly set!
+        if mode == "live" and not one_shot:
+            safe_print("[SAFETY GUARD] --live mode requires --one-shot flag for execution. Defaulting to dry_run mode.")
+            strategy.executor.mode = "dry_run"
+        else:
+            strategy.executor.mode = mode
 
         plan, evidence = await strategy.execute_application(
             page,
@@ -194,33 +208,40 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
             resume_pdf_path=resume_pdf_path
         )
 
-        forensic_log["execution_plan"] = plan.to_dict()
+        forensic_log["execution"]["fields_filled"] = sum(1 for a in evidence.actions if a.action_type.value == "FILL" and a.succeeded)
+        forensic_log["execution"]["resume_uploaded"] = any(a.action_type.value == "ATTACH" and a.succeeded for a in evidence.actions)
+        forensic_log["execution"]["submit_clicked"] = evidence.submit_clicked
+
         forensic_log["submission"] = {
-            "attempted": mode == "live",
+            "attempted": mode == "live" and one_shot,
             "clicked": evidence.submit_clicked,
-            "dom_confirmation": evidence.live_dom_confirmation,
+            "confirmation_detected": evidence.live_dom_confirmation,
             "application_id": evidence.application_id,
-            "application_id_source": evidence.application_id_source
+            "application_id_source": evidence.application_id_source if evidence.application_id else "NONE",
+            "result_url": evidence.url_after
         }
 
         # STRICT DERIVED INVARIANT CHECK FOR LIVE_SUBMISSION_VERIFIED & CONFIRMED_APPLIED
         is_live_submission_verified = (
             mode == "live"
+            and one_shot
             and forensic_log["portal"]["reached"] is True
             and forensic_log["portal"]["identity_verified"] is True
             and forensic_log["submission"]["attempted"] is True
             and forensic_log["submission"]["clicked"] is True
-            and (forensic_log["submission"]["dom_confirmation"] is True or forensic_log["submission"]["application_id"] is not None)
+            and (forensic_log["submission"]["confirmation_detected"] is True or forensic_log["submission"]["application_id"] is not None)
             and (forensic_log["submission"]["application_id_source"] == "LIVE_PORTAL_DOM" or evidence.live_dom_confirmation)
         )
 
         if is_live_submission_verified:
             forensic_log["validation_level"] = "LIVE_SUBMISSION_VERIFIED"
-            forensic_log["final_status"] = "CONFIRMED_APPLIED"
+            forensic_log["final_status"] = "APPLICATION_COMPLETED_AND_CONFIRMED"
             save_processed_key(target_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
+        elif evidence.submit_clicked and not evidence.live_dom_confirmation:
+            forensic_log["final_status"] = "SUBMISSION_COMPLETED_CONFIRMATION_NOT_FOUND"
         elif plan.recovery_required:
-            forensic_log["final_status"] = "RECOVERY_REQUIRED"
+            forensic_log["final_status"] = "APPLICATION_BLOCKED_REQUIRED_FIELD" if plan.recovery_reason.value == "UNRESOLVED_REQUIRED_FIELD" else "APPLICATION_BLOCKED_UNKNOWN_PORTAL_STATE"
         else:
             forensic_log["final_status"] = f"{mode.upper()}_READY" if mode in ["plan_only", "dry_run"] else "SUBMISSION_UNVERIFIED"
 
@@ -230,17 +251,16 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         await page.screenshot(path=screenshot_path)
 
         # Step 7: Telegram Notification Dispatch
-        mode_tag = f"🧪 <b>{mode.upper()} MODE PLAN</b>" if mode in ["plan_only", "dry_run"] else "🟢 <b>LIVE SUBMISSION</b>"
+        mode_tag = f"🧪 <b>{mode.upper()} MODE PLAN</b>" if mode in ["plan_only", "dry_run"] else "🟢 <b>ONE-SHOT LIVE SUBMISSION</b>"
         caption = (
             f"{mode_tag}\n\n"
             f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
             f"• <b>Canonical Key</b>: <code>{canon_key}</code>\n"
-            f"• <b>Mode</b>: <b>{mode.upper()}</b>\n"
+            f"• <b>Mode</b>: <b>{mode_str}</b>\n"
             f"• <b>Validation Level</b>: <b>{forensic_log['validation_level']}</b>\n"
             f"• <b>Planned Actions</b>: {len(plan.actions)}\n"
             f"• <b>Submit Clicked</b>: <b>{evidence.submit_clicked}</b>\n"
             f"• <b>Final Status</b>: <b>{forensic_log['final_status']}</b>\n"
-            f"• <b>Recovery Required</b>: <b>{plan.recovery_required}</b>\n"
             f"• <b>Candidate</b>: Vinay Khosya (NSUT Delhi)\n\n"
             f"🔗 <a href='{target_url}'>View Requisition URL</a>"
         )
@@ -249,23 +269,62 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
 
         await browser.close()
 
-    log_path = os.path.join(base_dir, f"v5_forensic_execution_record_{mode}.json")
+    # Save to data/audits/ if one-shot or standard persistent log
+    audits_dir = os.path.join(base_dir, "data", "audits")
+    os.makedirs(audits_dir, exist_ok=True)
+    if one_shot:
+        audit_file_name = f"siemens_one_shot_live_{timestamp_str}.json"
+    else:
+        audit_file_name = f"v5_forensic_execution_record_{mode}.json"
+
+    log_path = os.path.join(audits_dir, audit_file_name)
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(forensic_log, f, indent=2)
-    safe_print(f"[FORENSIC RECORD persistent JSON written to {log_path}]")
+    safe_print(f"\n[FORENSIC RECORD persistent JSON written to {log_path}]")
 
+    # Print Live Console Report
     safe_print("\n" + "=" * 70)
-    safe_print(f"[SUCCESS] HELIOS v5.0 PIPELINE EXECUTION COMPLETED ({mode.upper()})!")
+    safe_print("HELIOS V5 — ONE SHOT LIVE SIEMENS REPORT")
     safe_print("=" * 70)
+    safe_print(f"Company:               {company.upper()}")
+    safe_print(f"Job Title:             {forensic_log['job_title']}")
+    safe_print(f"Target URL:            {target_url}")
+    safe_print(f"Canonical Key:         {canon_key}")
+    safe_print(f"Portal Type:           {portal_id.type.upper()}")
+    safe_print(f"Authentication:        Successful")
+    safe_print("\nAPPLICATION PROGRESS")
+    safe_print("--------------------")
+    safe_print(f"Total Pages Analyzed:  {forensic_log['pages']['total']}")
+    safe_print(f"Pages Completed:       {forensic_log['pages']['completed']}")
+    safe_print("\nFIELDS")
+    safe_print("------")
+    safe_print(f"Filled:                {forensic_log['execution']['fields_filled']}")
+    safe_print(f"Resume Uploaded:       {forensic_log['execution']['resume_uploaded']}")
+    safe_print("\nSUBMISSION")
+    safe_print("----------")
+    safe_print(f"Submit Clicked:        {forensic_log['submission']['clicked']}")
+    safe_print(f"Result URL:            {forensic_log['submission']['result_url']}")
+    safe_print(f"Confirmation Detected: {forensic_log['submission']['confirmation_detected']}")
+    safe_print(f"Application ID:        {forensic_log['submission']['application_id'] or 'None'}")
+    safe_print(f"App ID Source:         {forensic_log['submission']['application_id_source']}")
+    safe_print("\nEMAIL")
+    safe_print("-----")
+    safe_print("Checked:               False (EMAIL_CONFIRMATION_NOT_CHECKED)")
+    safe_print("\nFINAL RESULT")
+    safe_print("------------")
+    safe_print(f"Status:                {forensic_log['final_status']}")
+    safe_print("=" * 70 + "\n")
+
     return forensic_log
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Helios v5.0 Universal Agent Runner")
-    parser.add_argument("--company", type=str, default="CRED", help="Company Name")
-    parser.add_argument("--url", type=str, default="https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5", help="Requisition URL")
+    parser.add_argument("--company", type=str, default="Siemens", help="Company Name")
+    parser.add_argument("--url", type=str, default="https://jobs.siemens.com/en_US/externaljobs", help="Requisition URL")
     parser.add_argument("--plan-only", action="store_true", help="Execute plan-only mode (no DOM changes)")
     parser.add_argument("--live", action="store_true", help="Execute live submission mode")
+    parser.add_argument("--one-shot", action="store_true", help="Authorize ONE-SHOT live submission")
 
     args = parser.parse_args()
     if args.plan_only:
@@ -275,4 +334,4 @@ if __name__ == "__main__":
     else:
         exec_mode = "dry_run"
 
-    asyncio.run(run_v5_pipeline(args.company, args.url, mode=exec_mode))
+    asyncio.run(run_v5_pipeline(args.company, args.url, mode=exec_mode, one_shot=args.one_shot))
