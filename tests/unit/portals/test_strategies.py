@@ -34,6 +34,7 @@ async def test_lever_strategy_execution():
     mock_page.query_selector = AsyncMock(side_effect=fake_query)
 
     strategy = LeverStrategy(company_name="cred")
+    strategy.executor.mode = "live"  # Set live mode for submit click testing
     plan, evidence = await strategy.execute_application(mock_page)
 
     assert plan.page_type.value == "APPLICATION_FORM"

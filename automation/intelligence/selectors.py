@@ -11,47 +11,47 @@ from automation.intelligence.contracts import ElementSemantic
 SEMANTIC_PATTERNS = {
     ElementSemantic.FIRST_NAME: {
         "autocomplete": ["given-name", "fname", "first-name"],
-        "names": ["first_name", "firstname", "first-name", "fname"],
-        "ats_ids": ["first_name", "givenname", "legalname-first"],
+        "names": ["first_name", "firstname", "first-name", "fname", "job_application[first_name]"],
+        "ats_ids": ["first_name", "givenname", "legalname-first", "#first_name"],
         "aria": ["first name", "given name", "first"],
         "labels": ["first name", "given name", "legal first name"],
         "placeholders": ["first name", "given name", "john"]
     },
     ElementSemantic.LAST_NAME: {
         "autocomplete": ["family-name", "lname", "last-name"],
-        "names": ["last_name", "lastname", "last-name", "lname"],
-        "ats_ids": ["last_name", "familyname", "legalname-last"],
+        "names": ["last_name", "lastname", "last-name", "lname", "job_application[last_name]"],
+        "ats_ids": ["last_name", "familyname", "legalname-last", "#last_name"],
         "aria": ["last name", "family name", "surname"],
         "labels": ["last name", "family name", "surname", "legal last name"],
         "placeholders": ["last name", "family name", "doe"]
     },
     ElementSemantic.EMAIL: {
         "autocomplete": ["email"],
-        "names": ["email", "email_address", "applicant_email"],
-        "ats_ids": ["email", "emailaddress"],
+        "names": ["email", "email_address", "applicant_email", "job_application[email]"],
+        "ats_ids": ["email", "emailaddress", "#email"],
         "aria": ["email", "email address"],
         "labels": ["email", "email address"],
         "placeholders": ["email", "example@domain.com"]
     },
     ElementSemantic.PHONE: {
         "autocomplete": ["tel", "phone"],
-        "names": ["phone", "telephone", "mobile", "phone_number"],
-        "ats_ids": ["phone", "phonenumber", "mobile"],
+        "names": ["phone", "telephone", "mobile", "phone_number", "job_application[phone]"],
+        "ats_ids": ["phone", "phonenumber", "mobile", "#phone"],
         "aria": ["phone", "telephone", "mobile number"],
         "labels": ["phone", "telephone", "phone number", "mobile"],
         "placeholders": ["phone", "+91", "mobile"]
     },
     ElementSemantic.ORGANIZATION: {
         "autocomplete": ["organization"],
-        "names": ["org", "company", "organization", "current_company"],
-        "ats_ids": ["org", "company", "school", "institution"],
+        "names": ["org", "company", "organization", "current_company", "job_application[company]"],
+        "ats_ids": ["org", "company", "school", "institution", "#org"],
         "aria": ["company", "organization", "university", "school"],
         "labels": ["company", "organization", "current company", "university"],
         "placeholders": ["company", "organization", "university"]
     },
     ElementSemantic.LINKEDIN: {
         "autocomplete": ["url"],
-        "names": ["linkedin", "urls[linkedin]", "urls_linkedin"],
+        "names": ["linkedin", "urls[linkedin]", "urls_linkedin", "job_application[answers_attributes][0][text_value]"],
         "ats_ids": ["linkedin"],
         "aria": ["linkedin", "linkedin profile", "linkedin url"],
         "labels": ["linkedin", "linkedin profile", "linkedin url"],
@@ -86,16 +86,16 @@ class SelectorResolver:
             if elem:
                 return (elem, sel, 0.99)
 
-        # Priority 2: Name attribute (Confidence: 0.98)
+        # Priority 2: Direct ID / Name attribute (Confidence: 0.98)
         for name in patterns.get("names", []):
-            sel = f"input[name='{name}'], input[name*='{name}']"
+            sel = f"input#{name}, input[name='{name}'], input[name*='{name}']"
             elem = await SelectorResolver._try_query(page, sel)
             if elem:
                 return (elem, sel, 0.98)
 
-        # Priority 3: ATS Vendor data-automation-id / data-qa (Confidence: 0.97)
+        # Priority 3: ATS Vendor data-automation-id / data-qa / ID (Confidence: 0.97)
         for ats_id in patterns.get("ats_ids", []):
-            sel = f"input[data-automation-id*='{ats_id}'], input[data-qa*='{ats_id}']"
+            sel = f"input#{ats_id.replace('#', '')}, input[data-automation-id*='{ats_id}'], input[data-qa*='{ats_id}']"
             elem = await SelectorResolver._try_query(page, sel)
             if elem:
                 return (elem, sel, 0.97)

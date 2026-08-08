@@ -1,13 +1,13 @@
 """
 scripts/run_v5_agent.py
 
-Helios v5.0 Complete Universal Vertical Slice Runner.
+Helios v5.0 Complete Universal Agent Runner.
 Integrates the complete v5 Universal Portal Intelligence Pipeline:
 Canonical ApplicationKey Dedup -> PortalDetector -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
 
 CLI Flags:
-  --company CRED --url <requisition_url> [--dry-run | --live]
-  Default execution mode is DRY RUN (--dry-run).
+  --company CRED --url <requisition_url> [--plan-only | --dry-run | --live]
+  Default execution policy is DRY RUN (--dry-run).
 """
 import sys
 import os
@@ -29,6 +29,7 @@ from automation.sessions.manager import PortalSessionManager
 from automation.verifier import verify_job_freshness, get_canonical_requisition_key, save_processed_key
 from automation.portals.detector import PortalDetector
 from automation.portals.strategies.lever import LeverStrategy
+from automation.portals.strategies.greenhouse import GreenhouseStrategy
 from automation.portals.strategies.generic import GenericStrategy
 from automation.fillers.semantic_filler import DEFAULT_CANDIDATE_PROFILE
 
@@ -65,8 +66,6 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "portal_identity": None,
         "freshness_check": None,
-        "page_schema": None,
-        "semantic_mapping": None,
         "execution_plan": None,
         "evidence_payload": None,
         "final_status": "PENDING"
@@ -114,13 +113,15 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         with open(resume_pdf_path, "w", encoding="utf-8") as f:
             f.write("% PDF Binary\n" + tailored.get("tailored_tex", ""))
 
-        # Step 5: ATS Strategy Execution (Lever vs Generic)
+        # Step 5: ATS Strategy Routing (Lever vs Greenhouse vs Generic)
         if portal_id.type == "lever":
             strategy = LeverStrategy(company_name=company.lower())
+        elif portal_id.type == "greenhouse":
+            strategy = GreenhouseStrategy(company_name=company.lower())
         else:
             strategy = GenericStrategy(company_name=company.lower())
 
-        # Set execution mode on ActionExecutor inside strategy
+        # Set execution policy mode on ActionExecutor inside strategy
         strategy.executor.mode = mode
 
         plan, evidence = await strategy.execute_application(
@@ -159,14 +160,14 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
             forensic_log["final_status"] = "RECOVERY_REQUIRED"
             safe_print(f"[RESULT] Application status: RECOVERY_REQUIRED (Reason: {plan.recovery_reason.value})")
         else:
-            forensic_log["final_status"] = "SUBMISSION_UNVERIFIED"
-            safe_print(f"[RESULT] Application status: SUBMISSION_UNVERIFIED (Mode: {mode.upper()})")
+            forensic_log["final_status"] = f"{mode.upper()}_READY" if mode in ["plan_only", "dry_run"] else "SUBMISSION_UNVERIFIED"
+            safe_print(f"[RESULT] Application status: {forensic_log['final_status']} (Mode: {mode.upper()})")
 
         screenshot_path = os.path.join(base_dir, f"v5_agent_execution_{mode}.png")
         await page.screenshot(path=screenshot_path)
 
         # Step 7: Telegram Notification Dispatch
-        mode_tag = "🧪 <b>DRY RUN PLAN</b>" if mode == "dry_run" else "🟢 <b>LIVE SUBMISSION</b>"
+        mode_tag = f"🧪 <b>{mode.upper()} MODE PLAN</b>" if mode in ["plan_only", "dry_run"] else "🟢 <b>LIVE SUBMISSION</b>"
         caption = (
             f"{mode_tag}\n\n"
             f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
@@ -190,7 +191,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
     safe_print(f"\n[FORENSIC RECORD persistent JSON written to {log_path}]")
 
     safe_print("\n" + "=" * 70)
-    safe_print("[SUCCESS] HELIOS v5.0 PIPELINE EXECUTION COMPLETED!")
+    safe_print(f"[SUCCESS] HELIOS v5.0 PIPELINE EXECUTION COMPLETED ({mode.upper()})!")
     safe_print("=" * 70)
     return forensic_log
 
@@ -199,8 +200,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Helios v5.0 Universal Agent Runner")
     parser.add_argument("--company", type=str, default="CRED", help="Company Name")
     parser.add_argument("--url", type=str, default="https://jobs.lever.co/cred/7e4d512e-fc89-40fd-9a30-46c5459bbea5", help="Requisition URL")
-    parser.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
+    parser.add_argument("--plan-only", action="store_true", help="Execute plan-only mode (no DOM changes)")
+    parser.add_argument("--live", action="store_true", help="Execute live submission mode")
 
     args = parser.parse_args()
-    exec_mode = "live" if args.live else "dry_run"
+    if args.plan_only:
+        exec_mode = "plan_only"
+    elif args.live:
+        exec_mode = "live"
+    else:
+        exec_mode = "dry_run"
+
     asyncio.run(run_v5_pipeline(args.company, args.url, mode=exec_mode))

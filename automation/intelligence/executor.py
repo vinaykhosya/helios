@@ -4,7 +4,7 @@ automation/intelligence/executor.py
 Helios v5.0 Action Executor.
 Safely executes PlannedActions (FILL, ATTACH, CHECK, CLICK) with scroll-into-view,
 error tracking, and produces the EvidencePayload contract.
-Supports execution_mode="dry_run" (plans & fills fields, but NEVER clicks submit).
+Supports Three-Level Execution Policy: "plan_only" vs "dry_run" vs "live".
 """
 import os
 from typing import List, Optional
@@ -19,8 +19,8 @@ from automation.intelligence.contracts import (
 
 class ActionExecutor:
     def __init__(self, mode: Optional[str] = None):
-        # execution_mode can be set via constructor or HELIOS_EXECUTION_MODE env var ("dry_run" vs "live")
-        self.mode = mode or os.getenv("HELIOS_EXECUTION_MODE", "live").lower()
+        # Three-Level Execution Policy: "plan_only" | "dry_run" | "live"
+        self.mode = (mode or os.getenv("HELIOS_EXECUTION_MODE", "dry_run")).lower()
 
     async def execute_plan(self, page, plan: ExecutionPlan) -> EvidencePayload:
         """
@@ -40,6 +40,13 @@ class ActionExecutor:
                 succeeded=False
             )
 
+            # PLAN_ONLY MODE INVARIANT: Skip all DOM modifications!
+            if self.mode == "plan_only":
+                rec.succeeded = False
+                rec.error = "[PLAN_ONLY] Action planned but skipped in plan_only mode"
+                action_records.append(rec)
+                continue
+
             try:
                 if action.action_type == ActionType.FILL:
                     elem = await page.query_selector(action.target_selector)
@@ -55,10 +62,10 @@ class ActionExecutor:
 
                 elif action.action_type == ActionType.CLICK:
                     if action.target_semantic == ElementSemantic.SUBMIT_APPLICATION:
-                        # DRY RUN INVARIANT: In dry_run mode, NEVER click submit!
-                        if self.mode == "dry_run":
+                        # DRY RUN INVARIANT: In dry_run or plan_only mode, NEVER click submit!
+                        if self.mode in ["dry_run", "plan_only"]:
                             rec.succeeded = False
-                            rec.error = "[DRY_RUN] Submission action planned but skipped in dry-run mode"
+                            rec.error = f"[{self.mode.upper()}] Submission action planned but skipped in {self.mode} mode"
                             action_records.append(rec)
                             continue
 

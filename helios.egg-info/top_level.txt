@@ -1,0 +1,7 @@
+ai
+backend
+core
+database
+intelligence
+shared
+workers
