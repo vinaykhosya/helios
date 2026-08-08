@@ -2,7 +2,7 @@
 automation/intelligence/planner.py
 
 Helios v5.0 Execution Planner.
-Transforms PageSchema contracts into explicit ExecutionPlans.
+Transforms PageSchema contracts into explicit ExecutionPlans via SemanticMapper.
 Enforces strict safety invariants: submission_allowed is True ONLY if all required fields are resolved,
 zero CAPTCHA/MFA, and submit target confidence >= 0.95.
 """
@@ -16,17 +16,18 @@ from automation.intelligence.contracts import (
     ElementSemantic,
     RecoveryReason
 )
-from automation.fillers.semantic_filler import SemanticFormEngine, DEFAULT_CANDIDATE_PROFILE
+from automation.intelligence.semantic_mapper import SemanticMapper, ValueSource
+from automation.fillers.semantic_filler import DEFAULT_CANDIDATE_PROFILE
 
 
 class ExecutionPlanner:
-    def __init__(self, candidate_profile: Optional[Dict[str, Any]] = None):
+    def __init__(self, candidate_profile: Optional[Dict[str, Any]] = None, verified_memory: Optional[Dict[str, str]] = None):
         self.profile = candidate_profile or DEFAULT_CANDIDATE_PROFILE
-        self.semantic_engine = SemanticFormEngine(self.profile)
+        self.mapper = SemanticMapper(self.profile, verified_memory)
 
     def create_plan(self, schema: PageSchema, resume_pdf_path: Optional[str] = None) -> ExecutionPlan:
         """
-        Transforms PageSchema into ExecutionPlan contract.
+        Transforms PageSchema -> SemanticMapping -> ExecutionPlan contract.
         """
         # Safety Check 1: CAPTCHA Challenge
         if schema.has_captcha or schema.page_type == PageType.CAPTCHA_CHALLENGE:
@@ -46,44 +47,27 @@ class ExecutionPlanner:
                 recovery_reason=RecoveryReason.MANDATORY_LOGIN_REQUIRED
             )
 
+        # Map Schema via SemanticMapper
+        mapping = self.mapper.map_schema(schema)
         actions = []
-        unresolved_fields = 0
 
-        # Plan FILL actions for fields
-        for field_elem in schema.fields:
-            sem = field_elem.semantic
-            val_to_fill = None
-
-            if sem == ElementSemantic.FIRST_NAME or sem == ElementSemantic.FULL_NAME:
-                val_to_fill = self.profile.get("name", "Vinay Khosya")
-            elif sem == ElementSemantic.LAST_NAME:
-                val_to_fill = self.profile.get("last_name", "Khosya")
-            elif sem == ElementSemantic.EMAIL:
-                val_to_fill = self.profile.get("email", "vinay.khosya.ug23@nsut.ac.in")
-            elif sem == ElementSemantic.PHONE:
-                val_to_fill = self.profile.get("phone", "+919996303072")
-            elif sem == ElementSemantic.ORGANIZATION:
-                val_to_fill = self.profile.get("org", "NSUT Delhi")
-            elif sem == ElementSemantic.LINKEDIN:
-                val_to_fill = self.profile.get("linkedin", "https://linkedin.com/in/vinaykhosya")
-            elif sem == ElementSemantic.GITHUB:
-                val_to_fill = self.profile.get("github", "https://github.com/vinaykhosya")
-
-            if val_to_fill:
-                actions.append(
-                    PlannedAction(
-                        action_id=f"act-fill-{sem.value}",
-                        action_type=ActionType.FILL,
-                        target_semantic=sem,
-                        target_selector=field_elem.selector_used,
-                        value_to_fill=val_to_fill,
-                        confidence=field_elem.confidence
+        # Generate FILL actions from mapped values
+        for mapped_val in mapping.mapped_values:
+            if mapped_val.value and not mapped_val.recovery_required:
+                field_elem = next((f for f in schema.fields if f.element_id == mapped_val.element_id), None)
+                if field_elem:
+                    actions.append(
+                        PlannedAction(
+                            action_id=f"act-fill-{mapped_val.semantic.value}",
+                            action_type=ActionType.FILL,
+                            target_semantic=mapped_val.semantic,
+                            target_selector=field_elem.selector_used,
+                            value_to_fill=mapped_val.value,
+                            confidence=mapped_val.confidence
+                        )
                     )
-                )
-            else:
-                unresolved_fields += 1
 
-        # Plan ATTACH action for resume
+        # Generate ATTACH action for resume
         if resume_pdf_path:
             actions.append(
                 PlannedAction(
@@ -96,7 +80,7 @@ class ExecutionPlanner:
                 )
             )
 
-        # Plan CLICK action for Submit Button
+        # Generate CLICK action for Submit Button
         submit_btn = next((b for b in schema.buttons if b.semantic == ElementSemantic.SUBMIT_APPLICATION), None)
         if submit_btn:
             actions.append(
@@ -114,7 +98,8 @@ class ExecutionPlanner:
             schema.page_type == PageType.APPLICATION_FORM
             and submit_btn is not None
             and submit_btn.confidence >= 0.90
-            and unresolved_fields == 0
+            and mapping.unresolved_count == 0
+            and not mapping.requires_human_recovery
         )
 
         return ExecutionPlan(
@@ -122,6 +107,8 @@ class ExecutionPlanner:
             actions=actions,
             submission_allowed=is_submittable,
             recovery_required=not is_submittable and schema.page_type == PageType.APPLICATION_FORM,
-            recovery_reason=RecoveryReason.NONE if is_submittable else RecoveryReason.SUBMISSION_CONFIDENCE_LOW,
+            recovery_reason=RecoveryReason.NONE if is_submittable else (
+                RecoveryReason.UNRESOLVED_SENSITIVE_QUESTION if mapping.unresolved_count > 0 else RecoveryReason.SUBMISSION_CONFIDENCE_LOW
+            ),
             min_action_confidence=min([a.confidence for a in actions]) if actions else 1.0
         )

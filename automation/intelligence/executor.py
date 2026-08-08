@@ -4,8 +4,10 @@ automation/intelligence/executor.py
 Helios v5.0 Action Executor.
 Safely executes PlannedActions (FILL, ATTACH, CHECK, CLICK) with scroll-into-view,
 error tracking, and produces the EvidencePayload contract.
+Supports execution_mode="dry_run" (plans & fills fields, but NEVER clicks submit).
 """
-from typing import List
+import os
+from typing import List, Optional
 from automation.intelligence.contracts import (
     ExecutionPlan,
     ActionType,
@@ -16,6 +18,10 @@ from automation.intelligence.contracts import (
 
 
 class ActionExecutor:
+    def __init__(self, mode: Optional[str] = None):
+        # execution_mode can be set via constructor or HELIOS_EXECUTION_MODE env var ("dry_run" vs "live")
+        self.mode = mode or os.getenv("HELIOS_EXECUTION_MODE", "live").lower()
+
     async def execute_plan(self, page, plan: ExecutionPlan) -> EvidencePayload:
         """
         Executes actions in ExecutionPlan and returns EvidencePayload contract.
@@ -49,6 +55,13 @@ class ActionExecutor:
 
                 elif action.action_type == ActionType.CLICK:
                     if action.target_semantic == ElementSemantic.SUBMIT_APPLICATION:
+                        # DRY RUN INVARIANT: In dry_run mode, NEVER click submit!
+                        if self.mode == "dry_run":
+                            rec.succeeded = False
+                            rec.error = "[DRY_RUN] Submission action planned but skipped in dry-run mode"
+                            action_records.append(rec)
+                            continue
+
                         # Safety rule: Only click submit if submission_allowed is True
                         if not plan.submission_allowed:
                             rec.succeeded = False
