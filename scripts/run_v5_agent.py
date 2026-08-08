@@ -5,6 +5,12 @@ Helios v5.0 Complete Universal Agent Runner.
 Integrates the complete v5 Universal Portal Intelligence Pipeline:
 Canonical ApplicationKey Dedup -> PortalDetector -> PageUnderstandingEngine -> SemanticMapper -> ExecutionPlanner -> ActionExecutor -> EvidenceVerifier.
 
+Enforces 4-Level Audit Hierarchy:
+  1. UNIT_TEST: Mocked unit test execution
+  2. LIVE_PORTAL_INSPECTED: Real portal reached & analyzed in plan_only mode
+  3. LIVE_PORTAL_DRY_RUN: Real portal fields/actions executed, submit blocked in dry_run mode
+  4. LIVE_SUBMISSION_VERIFIED: Real submit occurred + live DOM confirmation obtained in live mode
+
 CLI Flags:
   --company CRED --url <requisition_url> [--plan-only | --dry-run | --live]
   Default execution policy is DRY RUN (--dry-run).
@@ -89,6 +95,14 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
     safe_print(f"Target URL: {target_url}")
     safe_print(f"Canonical Identity Key: {canon_key}")
 
+    # Determine initial validation level
+    if mode == "plan_only":
+        validation_level = "LIVE_PORTAL_INSPECTED"
+    elif mode == "dry_run":
+        validation_level = "LIVE_PORTAL_DRY_RUN"
+    else:
+        validation_level = "LIVE_SUBMISSION_PENDING"
+
     # Step 1: Encrypt Credentials in Vault
     vault.set_credential(company.lower(), candidate_email, "CandidatePass123!")
     meta = vault.list_credentials_metadata()
@@ -100,7 +114,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         "target_url": target_url,
         "mode": mode,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "validation_level": "LIVE_PORTAL_VERIFIED",
+        "validation_level": validation_level,
         "live_portal_verified": False,
         "portal_identity": None,
         "freshness_check": None,
@@ -190,10 +204,11 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
             ]
         }
 
-        # Step 6: Final Status Determination & Deduplication Recording
-        if evidence.is_strong_evidence():
-            forensic_log["final_status"] = "CONFIRMED_APPLIED"
+        # Step 6: Final Status Determination & Validation Hierarchy Enforcement
+        if evidence.is_strong_evidence() and mode == "live":
+            forensic_log["validation_level"] = "LIVE_SUBMISSION_VERIFIED"
             forensic_log["live_portal_verified"] = True
+            forensic_log["final_status"] = "CONFIRMED_APPLIED"
             save_processed_key(target_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
         elif plan.recovery_required:
