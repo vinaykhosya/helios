@@ -17,8 +17,14 @@ class WorkdayStrategy(BaseStrategy):
     async def prepare_page(self, page) -> None:
         """
         Workday career portals require clicking 'Apply' or 'Apply Manually' if on job description page.
+        Bypasses maintenance redirect by navigating via Workday's client-side SPA router if needed.
         """
         try:
+            # Handle maintenance redirect bypass
+            if "community.workday.com/maintenance-page" in page.url.lower():
+                await page.goto("https://siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers", timeout=20000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(2000)
+
             # 1. Click initial Apply button on job description
             apply_btn = await page.query_selector("a[data-automation-id='applyButton'], button[data-automation-id='applyButton'], a:has-text('Apply')")
             if apply_btn and await apply_btn.is_visible():

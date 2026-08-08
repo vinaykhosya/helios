@@ -124,9 +124,10 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
         },
         "pages": {
             "total": 1,
-            "completed": 1
+            "completed": 0
         },
         "execution": {
+            "application_flow_started": False,
             "fields_filled": 0,
             "questions_answered": 0,
             "resume_uploaded": False,
@@ -195,7 +196,6 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             strategy = GenericStrategy(company_name=company.lower())
 
         # Set execution policy mode on ActionExecutor inside strategy
-        # Safety Guard: Submission ONLY allowed if mode is live AND --one-shot flag is explicitly set!
         if mode == "live" and not one_shot:
             safe_print("[SAFETY GUARD] --live mode requires --one-shot flag for execution. Defaulting to dry_run mode.")
             strategy.executor.mode = "dry_run"
@@ -208,12 +208,22 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             resume_pdf_path=resume_pdf_path
         )
 
+        # Check if actual application flow started (not maintenance redirect)
+        current_url = page.url.lower()
+        is_maintenance = "community.workday.com/maintenance-page" in current_url
+        flow_started = (not is_maintenance) and (plan.page_type.value == "APPLICATION_FORM" or len(plan.actions) > 0)
+
+        forensic_log["execution"]["application_flow_started"] = flow_started
         forensic_log["execution"]["fields_filled"] = sum(1 for a in evidence.actions if a.action_type.value == "FILL" and a.succeeded)
         forensic_log["execution"]["resume_uploaded"] = any(a.action_type.value == "ATTACH" and a.succeeded for a in evidence.actions)
         forensic_log["execution"]["submit_clicked"] = evidence.submit_clicked
 
+        if flow_started:
+            forensic_log["pages"]["completed"] = 1
+
+        # Correct Audit Semantics: attempted is ONLY True if flow_started AND mode is live AND one_shot!
         forensic_log["submission"] = {
-            "attempted": mode == "live" and one_shot,
+            "attempted": flow_started and mode == "live" and one_shot,
             "clicked": evidence.submit_clicked,
             "confirmation_detected": evidence.live_dom_confirmation,
             "application_id": evidence.application_id,
@@ -225,6 +235,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
         is_live_submission_verified = (
             mode == "live"
             and one_shot
+            and flow_started
             and forensic_log["portal"]["reached"] is True
             and forensic_log["portal"]["identity_verified"] is True
             and forensic_log["submission"]["attempted"] is True
@@ -238,6 +249,8 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             forensic_log["final_status"] = "APPLICATION_COMPLETED_AND_CONFIRMED"
             save_processed_key(target_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
+        elif is_maintenance:
+            forensic_log["final_status"] = "APPLICATION_BLOCKED_UNKNOWN_PORTAL_STATE"
         elif evidence.submit_clicked and not evidence.live_dom_confirmation:
             forensic_log["final_status"] = "SUBMISSION_COMPLETED_CONFIRMATION_NOT_FOUND"
         elif plan.recovery_required:
@@ -257,8 +270,8 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
             f"• <b>Company</b>: {company.upper()} ({portal_id.type.upper()} Portal)\n"
             f"• <b>Canonical Key</b>: <code>{canon_key}</code>\n"
             f"• <b>Mode</b>: <b>{mode_str}</b>\n"
+            f"• <b>Flow Started</b>: <b>{flow_started}</b>\n"
             f"• <b>Validation Level</b>: <b>{forensic_log['validation_level']}</b>\n"
-            f"• <b>Planned Actions</b>: {len(plan.actions)}\n"
             f"• <b>Submit Clicked</b>: <b>{evidence.submit_clicked}</b>\n"
             f"• <b>Final Status</b>: <b>{forensic_log['final_status']}</b>\n"
             f"• <b>Candidate</b>: Vinay Khosya (NSUT Delhi)\n\n"
@@ -294,6 +307,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
     safe_print(f"Authentication:        Successful")
     safe_print("\nAPPLICATION PROGRESS")
     safe_print("--------------------")
+    safe_print(f"Flow Started:          {forensic_log['execution']['application_flow_started']}")
     safe_print(f"Total Pages Analyzed:  {forensic_log['pages']['total']}")
     safe_print(f"Pages Completed:       {forensic_log['pages']['completed']}")
     safe_print("\nFIELDS")
@@ -302,6 +316,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run", 
     safe_print(f"Resume Uploaded:       {forensic_log['execution']['resume_uploaded']}")
     safe_print("\nSUBMISSION")
     safe_print("----------")
+    safe_print(f"Attempted:             {forensic_log['submission']['attempted']}")
     safe_print(f"Submit Clicked:        {forensic_log['submission']['clicked']}")
     safe_print(f"Result URL:            {forensic_log['submission']['result_url']}")
     safe_print(f"Confirmation Detected: {forensic_log['submission']['confirmation_detected']}")
