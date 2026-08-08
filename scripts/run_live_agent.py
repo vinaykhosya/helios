@@ -1,12 +1,12 @@
 """
 scripts/run_live_agent.py
 
-Helios Continuous 24/7 Autonomous Background Agent Runner.
-- Auto-captures CAPTCHA, login-required, or manual-review jobs into Recovery Center with 1-Click direct apply links.
-- Reads custom target companies filter set from Web Dashboard (applies ONLY to specified companies when filter active).
-- Fills form inputs (#first_name, #email, #phone, resume attachment) and submits applications.
-- Verifies post-submission state with verifier.py and dispatches DOM photo screenshots to Telegram (@Helios_vinay_AI_Bot).
-- Pushes live real-time execution logs & verified applications to Local Server (http://127.0.0.1:8000) and Production (https://helios.vinaykhosya.com).
+Helios Autonomous 24/7 Agent Engine with Deduplication Registry & Multi-Step Career Portal Filler.
+- Persistent Deduplication Registry (data/applied_urls_history.json): Prevents repeating any job application twice.
+- Multi-Step Form Filler: Handles pagination buttons (Next, Continue, Apply Now, Enroll Now, Proceed, Submit).
+- Authenticated & Session Cookie Integration: Uses storage_state.json for logged-in sessions.
+- Sequentially scans LG, Samsung, Google, Nokia, Microsoft, Amazon, Razorpay, Swiggy, Postman, CRED, etc.
+- Pushes live real-time execution logs, recovery items, and verified applications to Local Server (http://127.0.0.1:8000) and Production (https://helios.vinaykhosya.com).
 """
 import sys
 import os
@@ -29,6 +29,30 @@ from automation.connectors.dynamic_crawler import extract_individual_job_links, 
 telegram = TelegramService()
 resume_service = ResumeService(template_path="templates/master_resume.tex")
 ENDPOINTS = ["http://127.0.0.1:8000", "https://helios.vinaykhosya.com"]
+
+# Persistent Deduplication Registry File
+DEDUP_FILE = os.path.join(base_dir, "data", "applied_urls_history.json")
+os.makedirs(os.path.dirname(DEDUP_FILE), exist_ok=True)
+
+
+def load_processed_urls() -> set:
+    if os.path.exists(DEDUP_FILE):
+        try:
+            with open(DEDUP_FILE, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+
+def save_processed_url(url: str):
+    processed = load_processed_urls()
+    processed.add(url)
+    try:
+        with open(DEDUP_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(processed), f, indent=2)
+    except Exception:
+        pass
 
 
 def push_log_event(level: str, module: str, message: str, application: dict = None, recovery: dict = None):
@@ -81,6 +105,72 @@ async def fill_field(page, selectors, value):
     return False
 
 
+async def process_multistep_company_form(page, resume_pdf_path) -> bool:
+    """Handles multi-page application flows (Next, Continue, Enroll Now, Save & Proceed, Submit)."""
+    step = 1
+    max_steps = 4
+    inputs_filled_any_step = False
+
+    while step <= max_steps:
+        # Fill visible inputs on current step page
+        n1 = await fill_field(page, ["#first_name", "input[name*='first_name']", "input[name='name']", "#name"], "Vinay Khosya")
+        n2 = await fill_field(page, ["#last_name", "input[name*='last_name']"], "Khosya")
+        e1 = await fill_field(page, ["#email", "input[name*='email']"], "vinay.khosya.ug23@nsut.ac.in")
+        p1 = await fill_field(page, ["#phone", "input[name*='phone']", "#telephone"], "+919996303072")
+        o1 = await fill_field(page, ["#org", "input[name*='org']", "input[name*='company']"], "Netaji Subhas University of Technology (NSUT)")
+        l1 = await fill_field(page, ["#urls\\[LinkedIn\\]", "input[name*='linkedin']"], "https://linkedin.com/in/vinaykhosya")
+
+        file_inputs = await page.query_selector_all("input[type='file']")
+        if file_inputs:
+            try:
+                await file_inputs[0].set_input_files(resume_pdf_path)
+            except Exception:
+                pass
+
+        if n1 or e1 or p1 or file_inputs:
+            inputs_filled_any_step = True
+
+        # Look for Submit / Finish Application Buttons first
+        submit_btns = await page.query_selector_all("button[type='submit'], input[type='submit'], #btn-submit, .template-btn-submit, button:has-text('Submit Application'), button:has-text('Submit')")
+        if submit_btns:
+            try:
+                await submit_btns[0].click()
+                await page.wait_for_timeout(2000)
+                return inputs_filled_any_step
+            except Exception:
+                pass
+
+        # Look for Pagination / Next Buttons (Next, Continue, Proceed, Enroll Now, Save & Next)
+        next_selectors = [
+            "button:has-text('Next')",
+            "a:has-text('Next')",
+            "button:has-text('Continue')",
+            "a:has-text('Continue')",
+            "button:has-text('Enroll Now')",
+            "button:has-text('Save & Continue')",
+            "button:has-text('Proceed')"
+        ]
+        
+        clicked_next = False
+        for nsel in next_selectors:
+            try:
+                nelem = await page.query_selector(nsel)
+                if nelem and await nelem.is_visible():
+                    await nelem.click()
+                    await page.wait_for_timeout(2000)
+                    clicked_next = True
+                    break
+            except Exception:
+                continue
+
+        if not clicked_next:
+            break
+            
+        step += 1
+
+    return inputs_filled_any_step
+
+
 async def apply_to_individual_job(job: dict):
     title = job.get("title", "Software Engineer")
     company = job.get("company_name", "Tech Employer")
@@ -90,7 +180,16 @@ async def apply_to_individual_job(job: dict):
     if not apply_url:
         return
 
+    # Check Deduplication Registry
+    processed_urls = load_processed_urls()
+    if apply_url in processed_urls:
+        push_log_event("INFO", "CRAWLER", f"Skipping Duplicate Job (Already Processed): {title} at {company}")
+        return
+
     push_log_event("INFO", "CRAWLER", f"Navigating Job URL: {title} at {company}")
+
+    # Save to Deduplication Registry immediately so it's never repeated
+    save_processed_url(apply_url)
 
     # Step 1: Groq 70B ATS Resume Tailoring
     try:
@@ -106,7 +205,7 @@ async def apply_to_individual_job(job: dict):
     with open(resume_pdf_path, "w", encoding="utf-8") as f:
         f.write("% PDF Resume Binary\n" + tailored.get("tailored_tex", ""))
 
-    # Step 2: Playwright Execution
+    # Step 2: Playwright Execution with Storage State Cookies
     storage_state_path = os.path.join(base_dir, "storage_state.json")
     
     async with async_playwright() as p:
@@ -117,7 +216,7 @@ async def apply_to_individual_job(job: dict):
         screenshot_path = os.path.join(base_dir, f"applied_{company.replace(' ', '_')}.png")
 
         try:
-            await page.goto(apply_url, timeout=12000, wait_until="domcontentloaded")
+            resp = await page.goto(apply_url, timeout=12000, wait_until="domcontentloaded")
             await page.wait_for_timeout(1000)
 
             v_res = await verify_post_submission_state(page)
@@ -147,25 +246,11 @@ async def apply_to_individual_job(job: dict):
                 await browser.close()
                 return
 
-            # Fill Form Inputs
-            filled_name = await fill_field(page, ["#first_name", "input[name*='first_name']", "input[name='name']", "#name"], "Vinay Khosya")
-            filled_email = await fill_field(page, ["#email", "input[name*='email']"], "vinay.khosya.ug23@nsut.ac.in")
-            await fill_field(page, ["#last_name", "input[name*='last_name']"], "Khosya")
-            await fill_field(page, ["#phone", "input[name*='phone']", "#telephone"], "+919996303072")
-            await fill_field(page, ["#org", "input[name*='org']", "input[name*='company']"], "Netaji Subhas University of Technology (NSUT)")
-            await fill_field(page, ["#urls\\[LinkedIn\\]", "input[name*='linkedin']"], "https://linkedin.com/in/vinaykhosya")
-            await fill_field(page, ["#urls\\[GitHub\\]", "input[name*='github']"], "https://github.com/vinaykhosya")
-
-            # Attach Resume File
-            file_inputs = await page.query_selector_all("input[type='file']")
-            if file_inputs:
-                try:
-                    await file_inputs[0].set_input_files(resume_pdf_path)
-                except Exception:
-                    pass
+            # Execute Multi-Step Form Filler
+            inputs_filled = await process_multistep_company_form(page, resume_pdf_path)
 
             # Rule 3: Auto-Capture Landing Pages or Login-Required Pages into Recovery Center
-            if not (filled_name or filled_email or file_inputs):
+            if not inputs_filled:
                 rec_item = {
                     "id": f"rec-review-{company.lower().replace(' ', '')}-{int(time.time())}",
                     "title": title,
@@ -178,15 +263,6 @@ async def apply_to_individual_job(job: dict):
                 push_log_event("WARN", "VERIFIER", f"No input fields found for {company} — Captured into Recovery Center for 1-Click Candidate Fill", recovery=rec_item)
                 await browser.close()
                 return
-
-            # Submit Application if button present
-            submit_btns = await page.query_selector_all("button[type='submit'], input[type='submit'], #btn-submit, .template-btn-submit")
-            if submit_btns:
-                try:
-                    await submit_btns[0].click()
-                    await page.wait_for_timeout(2000)
-                except Exception:
-                    pass
 
             # Capture DOM Screenshot
             await page.screenshot(path=screenshot_path)
@@ -227,7 +303,7 @@ async def apply_to_individual_job(job: dict):
 
 
 async def main_247_loop():
-    push_log_event("INFO", "AGENT", "HELIOS 24/7 AUTONOMOUS AGENT ACTIVE (Recovery Center & Custom Company Filter Enabled)")
+    push_log_event("INFO", "AGENT", "HELIOS 24/7 AUTONOMOUS AGENT ACTIVE (Deduplication Registry & Multi-Step Filler Enabled)")
 
     cycle = 1
     while True:
@@ -239,7 +315,7 @@ async def main_247_loop():
             if not active_employers:
                 active_employers = MASTER_EMPLOYER_DIRECTORY
         else:
-            push_log_event("INFO", "CRAWLER", f"Cycle #{cycle}: Processing 100+ Employer Directories...")
+            push_log_event("INFO", "CRAWLER", f"Cycle #{cycle}: Processing 100+ Employer Directories (LG, Samsung, Google, Nokia, Razorpay, Swiggy)...")
             active_employers = MASTER_EMPLOYER_DIRECTORY
 
         for company in active_employers:
