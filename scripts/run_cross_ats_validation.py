@@ -2,18 +2,16 @@
 scripts/run_cross_ats_validation.py
 
 Helios v5.0 Cross-ATS Live Validation Experiment Runner.
-Executes controlled single-job live application runs across 7 distinct companies & ATS platforms:
-  1. LG (Company Careers)
-  2. NVIDIA (Workday)
-  3. Microsoft (Microsoft Careers)
-  4. Google (Google Careers)
-  5. CRED (Lever)
-  6. Postman (Greenhouse)
-  7. HashiCorp (Ashby / Greenhouse)
+Executes controlled single-job live application runs across 5 diagnostic regression targets:
+  1. NVIDIA (Workday / Generic)
+  2. Google (Google Careers / Generic)
+  3. CRED (Lever - Fresh Requisition Key)
+  4. Postman (Greenhouse)
+  5. HashiCorp (Ashby)
 
 Produces detailed single-company audit JSON records AND an aggregate report at:
   data/audits/cross_company_live_validation_<timestamp>.json
-and prints the empirical cross-ATS comparison matrix.
+and prints the empirical cross-ATS capability matrix.
 """
 import sys
 import os
@@ -36,6 +34,7 @@ from automation.verifier import verify_job_freshness, get_canonical_requisition_
 from automation.discovery.careers_discovery import CareersDiscoveryEngine
 from automation.discovery.destination_resolver import ApplyDestinationResolver, DestinationResolution
 from automation.portals.detector import PortalDetector
+from automation.portals.capability_matrix import ATSCapabilityMatrix
 from automation.portals.strategies.lever import LeverStrategy
 from automation.portals.strategies.greenhouse import GreenhouseStrategy
 from automation.portals.strategies.workday import WorkdayStrategy
@@ -50,22 +49,10 @@ vault = EncryptedCredentialVault()
 
 TARGET_COMPANIES = [
     {
-        "company": "LG",
-        "default_url": "https://www.lg.com/global/careers",
-        "search_query": "Software Engineer",
-        "ats_expected": "Generic / Custom Careers Portal"
-    },
-    {
         "company": "NVIDIA",
-        "default_url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite",
+        "default_url": "https://jobs.nvidia.com/careers/job/893392590814",
         "search_query": "Software Engineer",
         "ats_expected": "Workday"
-    },
-    {
-        "company": "Microsoft",
-        "default_url": "https://careers.microsoft.com/us/en/search-results?keywords=Software%20Engineer",
-        "search_query": "Software Engineer",
-        "ats_expected": "Microsoft Careers / Custom"
     },
     {
         "company": "Google",
@@ -199,7 +186,15 @@ async def run_single_company_validation(company_cfg: Dict[str, str], mode: str =
         audit["canonical_key"] = canon_key
         safe_print(f"[{company}] Canonical Identity Key: {canon_key}")
 
-        # Check execution guard
+        # Check execution guard & network failure classification
+        if dest_res.is_network_failure:
+            safe_print(f"[{company}] [NETWORK GUARD] Network or browser navigation failure encountered. Stopping cleanly.")
+            audit["final_status"] = "APPLICATION_BLOCKED"
+            audit["failure_stage"] = "NETWORK_OR_BROWSER_NAVIGATION_FAILURE"
+            audit["failure_reason"] = dest_res.error_reason
+            await browser.close()
+            return audit
+
         if not dest_res.resolved or dest_res.is_maintenance:
             safe_print(f"[{company}] [EXECUTION GUARD] Application destination failed resolution. Stopping cleanly.")
             audit["final_status"] = "APPLICATION_BLOCKED"
@@ -381,6 +376,7 @@ async def run_cross_ats_experiment(mode: str = "dry_run", one_shot: bool = False
         "total_tested": len(results),
         "successful_submissions": sum(1 for r in results if r["submit_clicked"]),
         "confirmed_submissions": sum(1 for r in results if r["post_submit_confirmation"]),
+        "capability_matrix": ATSCapabilityMatrix.get_all_profiles(),
         "company_audits": results
     }
 

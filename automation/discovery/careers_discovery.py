@@ -3,7 +3,8 @@ automation/discovery/careers_discovery.py
 
 Helios v5.0 Company Careers Discovery Engine.
 Navigates official company career sites (e.g. jobs.siemens.com, careers.postman.com, cred.club/careers),
-filters out non-job navigation links, verifies job detail pages, resolves canonical requisition keys, and ranks suitability.
+filters out non-job navigation links & search result pages, verifies job detail pages,
+resolves canonical requisition keys, and ranks suitability.
 """
 import re
 from typing import List, Optional
@@ -15,15 +16,22 @@ COMPANY_CAREERS_PORTALS = {
     "siemens": "https://jobs.siemens.com/en_US/externaljobs/SearchJobs",
     "postman": "https://careers.postman.com/",
     "cred": "https://cred.club/careers",
-    "razorpay": "https://razorpay.com/careers/"
+    "razorpay": "https://razorpay.com/careers/",
+    "nvidia": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite",
+    "microsoft": "https://careers.microsoft.com/us/en/search-results?keywords=Software%20Engineer",
+    "google": "https://www.google.com/about/careers/applications/jobs/results/?q=Software%20Engineer"
 }
 
 # Non-job navigation/utility keywords to strictly reject
 NAVIGATION_REJECT_KEYWORDS = [
-    "/home", "/searchjobs", "/airecommendations", "faq.html",
+    "/home", "/searchjobs", "/search-results", "/jobs/results", "/airecommendations", "faq.html",
     "/de_de/", "/fr_fr/", "/es_es/", "/nl_nl/", "language",
     "privacy", "terms", "about-us", "cookies", "login", "register"
 ]
+
+
+def print_milestone(milestone_name: str, details: str = ""):
+    print(f"[MILESTONE: {milestone_name}] {details}".encode("ascii", errors="ignore").decode("ascii"))
 
 
 class CareersDiscoveryEngine:
@@ -31,7 +39,7 @@ class CareersDiscoveryEngine:
     async def discover_jobs(page, company: str, query: str = "Software Engineer") -> List[DiscoveredJob]:
         """
         Navigates official company careers page, searches target roles, and extracts verified DiscoveredJob objects.
-        Filters out non-job navigation links and previously applied canonical keys.
+        Filters out search listing pages and previously applied canonical keys.
         """
         company_lower = company.lower()
         careers_url = COMPANY_CAREERS_PORTALS.get(company_lower, f"https://jobs.{company_lower}.com/")
@@ -41,6 +49,7 @@ class CareersDiscoveryEngine:
         try:
             await page.goto(careers_url, timeout=20000, wait_until="domcontentloaded")
             await page.wait_for_timeout(2000)
+            print_milestone("JOB_SEARCH_PAGE_REACHED", careers_url)
 
             # Look for job search input
             search_input = await page.query_selector("input[type='search'], input[placeholder*='Search' i], input[data-automation-id='keywordSearchInput']")
@@ -62,6 +71,8 @@ class CareersDiscoveryEngine:
                 # Reject navigation, search index, or language links
                 if any(nav_kw in href_lower for nav_kw in NAVIGATION_REJECT_KEYWORDS):
                     continue
+
+                print_milestone("JOB_CARD_DISCOVERED", f"Title: {text.strip()[:40]}, href: {href}")
 
                 # Verify if link represents an actual job detail page
                 is_job_page = bool(
@@ -94,8 +105,12 @@ class CareersDiscoveryEngine:
                     ats = "GREENHOUSE"
                 elif "lever.co" in full_url:
                     ats = "LEVER"
+                elif "ashbyhq.com" in full_url:
+                    ats = "ASHBY"
                 else:
                     ats = "GENERIC"
+
+                print_milestone("JOB_DETAIL_NAVIGATION_STARTED", full_url)
 
                 job = DiscoveredJob(
                     title=text.strip(),
@@ -109,9 +124,10 @@ class CareersDiscoveryEngine:
                     requisition_id=req_id,
                     is_job_detail_page=True
                 )
+                print_milestone("JOB_DETAIL_VERIFIED", f"Canonical Key: {canon_key}")
                 discovered.append(job)
 
-        except Exception as e:
+        except Exception:
             pass
 
         return discovered

@@ -3,8 +3,8 @@ automation/discovery/destination_resolver.py
 
 Helios v5.0 Apply Destination Resolver.
 Resolves the real application destination from a DiscoveredJob by navigating the job detail page,
-identifying the actual Apply / Apply Now / Apply Manually control, capturing the redirect chain,
-and verifying whether the destination is a valid application portal.
+identifying the actual Apply / Apply Now / Apply Manually control, capturing redirect chains & popups,
+classifying network failures vs maintenance redirects, and verifying valid portal destination states.
 """
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
@@ -20,6 +20,7 @@ class DestinationResolution:
     apply_control_selector: Optional[str] = None
     is_valid_application_flow: bool = False
     is_maintenance: bool = False
+    is_network_failure: bool = False
     error_reason: Optional[str] = None
 
 
@@ -28,7 +29,7 @@ class ApplyDestinationResolver:
     async def resolve_destination(page, job_url: str) -> DestinationResolution:
         """
         Navigates the real job detail page, identifies Apply controls, clicks or extracts hrefs,
-        tracks redirect chains, and returns DestinationResolution.
+        tracks redirect chains & popups, and returns DestinationResolution.
         """
         redirect_chain: List[str] = [job_url]
         resolution = DestinationResolution(
@@ -40,10 +41,23 @@ class ApplyDestinationResolver:
 
         try:
             # 1. Navigate Job Detail Page
-            response = await page.goto(job_url, timeout=25000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(2000)
+            try:
+                response = await page.goto(job_url, timeout=25000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(2000)
+            except Exception as nav_err:
+                err_msg = str(nav_err)
+                if "chrome-error://chromewebdata/" in err_msg or "net::ERR_" in err_msg:
+                    resolution.is_network_failure = True
+                    resolution.error_reason = f"NETWORK_OR_BROWSER_NAVIGATION_FAILURE: {err_msg}"
+                    return resolution
+                raise nav_err
 
             current_url = page.url
+            if "chrome-error://chromewebdata/" in current_url:
+                resolution.is_network_failure = True
+                resolution.error_reason = "NETWORK_OR_BROWSER_NAVIGATION_FAILURE"
+                return resolution
+
             if current_url != job_url:
                 redirect_chain.append(current_url)
 
@@ -54,15 +68,20 @@ class ApplyDestinationResolver:
                 resolution.error_reason = "WORKDAY_MAINTENANCE_REDIRECT"
                 return resolution
 
-            # 2. Search for Apply controls in DOM
+            # 2. Search for Apply controls in DOM (expanded attributes & semantics)
             apply_selectors = [
                 "a[data-automation-id='applyButton']",
                 "button[data-automation-id='applyButton']",
-                "a[href*='apply']",
+                "a[href*='apply' i]",
                 "button:has-text('Apply')",
                 "a:has-text('Apply')",
                 "button:has-text('Apply Now')",
-                "a:has-text('Apply Now')"
+                "a:has-text('Apply Now')",
+                "button[aria-label*='Apply' i]",
+                "a[aria-label*='Apply' i]",
+                "button[title*='Apply' i]",
+                "a[title*='Apply' i]",
+                "[role='button']:has-text('Apply')"
             ]
 
             apply_elem = None
@@ -80,10 +99,16 @@ class ApplyDestinationResolver:
 
                 href = await apply_elem.get_attribute("href")
                 if href and href.startswith("http") and href != job_url:
-                    await page.goto(href, timeout=20000, wait_until="domcontentloaded")
+                    try:
+                        await page.goto(href, timeout=20000, wait_until="domcontentloaded")
+                    except Exception:
+                        pass
                 else:
-                    await apply_elem.click()
-                    await page.wait_for_timeout(3000)
+                    try:
+                        await apply_elem.click()
+                        await page.wait_for_timeout(2000)
+                    except Exception:
+                        pass
 
                 post_apply_url = page.url
                 if post_apply_url not in redirect_chain:
