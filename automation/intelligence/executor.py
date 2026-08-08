@@ -3,7 +3,7 @@ automation/intelligence/executor.py
 
 Helios v5.0 Action Executor.
 Safely executes PlannedActions (FILL, ATTACH, CHECK, CLICK) with scroll-into-view,
-error tracking, and produces the EvidencePayload contract.
+error tracking, enabled status verification, and produces the EvidencePayload contract.
 Supports Three-Level Execution Policy: "plan_only" vs "dry_run" vs "live".
 """
 import os
@@ -79,6 +79,13 @@ class ActionExecutor:
 
                         btn = await page.query_selector(action.target_selector)
                         if btn and await btn.is_visible():
+                            is_disabled = await btn.get_attribute("disabled") is not None or await btn.get_attribute("aria-disabled") == "true"
+                            if is_disabled:
+                                rec.succeeded = False
+                                rec.error = "Submit button is currently disabled by portal"
+                                action_records.append(rec)
+                                continue
+
                             await btn.scroll_into_view_if_needed()
                             await btn.click()
                             await page.wait_for_timeout(5000)
@@ -103,16 +110,15 @@ class ActionExecutor:
             or "application submitted" in body_text
             or "application received" in body_text
             or "thank you for your application" in body_text
+            or "your application has been submitted" in body_text
         )
 
         live_app_id = None
-        # Extract live application ID from post-submit DOM if available
         if dom_confirmation:
             match = re.search(r'(?:application|req|reference|id)\s*(?:#|id|number)?\s*:?\s*([a-z0-9\-]{6,25})', body_text, re.IGNORECASE)
             if match:
                 live_app_id = match.group(1)
 
-        # STRICT EVIDENCE INVARIANT: If application_id is None, source MUST be "NONE"
         app_id_source = "LIVE_PORTAL_DOM" if live_app_id else "NONE"
 
         return EvidencePayload(

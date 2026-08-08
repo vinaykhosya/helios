@@ -35,7 +35,7 @@ def test_semantic_mapper_profile_lookup():
 
 def test_semantic_mapper_unresolved_field_triggers_recovery():
     fields = [
-        DetectedElement("f-unknown", "input[name='custom_q12']", "input", "text", ElementSemantic.CUSTOM_QUESTION, 0.50)
+        DetectedElement("f-unknown", "input[name='custom_q12']", "input", "text", ElementSemantic.CUSTOM_QUESTION, 0.50, metadata={"is_required": True})
     ]
     schema = PageSchema(
         page_type=PageType.APPLICATION_FORM,

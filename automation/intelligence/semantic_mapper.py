@@ -50,6 +50,7 @@ class SemanticMapper:
     def map_schema(self, schema: PageSchema) -> SemanticMapping:
         """
         Maps PageSchema elements to SemanticValue contracts.
+        Only unresolved REQUIRED fields trigger human_recovery_needed.
         """
         mapped: List[SemanticValue] = []
         unresolved = 0
@@ -100,15 +101,16 @@ class SemanticMapper:
                 source = ValueSource.VERIFIED_MEMORY
                 conf = 1.0
 
-            # Check 3: Unresolved Unknown Field -> Recovery Required
+            # Check 3: Unresolved Unknown Field
             else:
                 val = None
                 source = ValueSource.NONE
                 conf = 0.30
                 req_llm = True
                 rec_req = True
-                unresolved += 1
-                human_recovery_needed = True
+                if elem.metadata.get("is_required", False):
+                    unresolved += 1
+                    human_recovery_needed = True
 
             confidences.append(conf)
             mapped.append(

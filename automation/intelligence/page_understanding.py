@@ -47,7 +47,7 @@ class PageUnderstandingEngine:
         if "cloudflare" in body_text or "captcha" in body_text or "security check" in title_lower:
             page_type = PageType.CAPTCHA_CHALLENGE
             has_captcha = True
-        elif "/thanks" in url_lower or "thanks for applying" in body_text or "application submitted" in body_text:
+        elif "/thanks" in url_lower or "thanks for applying" in body_text or "application submitted" in body_text or "thank you for applying" in body_text:
             page_type = PageType.THANK_YOU_CONFIRMATION
         elif "sign in" in body_text and "password" in body_text and len(body_text) < 1000:
             page_type = PageType.LOGIN_REQUIRED
@@ -94,7 +94,7 @@ class PageUnderstandingEngine:
                 ("button:has-text('Next')", ElementSemantic.SUBMIT_APPLICATION, "Next"),
                 ("button:has-text('Save and Continue')", ElementSemantic.SUBMIT_APPLICATION, "Save and Continue"),
                 ("button:has-text('Review')", ElementSemantic.SUBMIT_APPLICATION, "Review"),
-                ("button[type='submit'], input[type='submit'], #btn-submit, button:has-text('Submit Application')", ElementSemantic.SUBMIT_APPLICATION, "Submit")
+                ("button.template-btn-submit, button[type='submit'], input[type='submit'], #btn-submit, button:has-text('Submit application'), button:has-text('Submit Application')", ElementSemantic.SUBMIT_APPLICATION, "Submit")
             ]
 
             for sel, sem, label in wizard_buttons:
