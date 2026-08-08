@@ -1,11 +1,12 @@
 """
 tests/unit/portals/test_strategies.py
 
-Unit tests for Helios v5.0 ATS Strategies (LeverStrategy, GenericStrategy).
+Unit tests for Helios v5.0 ATS Strategies (LeverStrategy, WorkdayStrategy, GenericStrategy).
 """
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from automation.portals.strategies.lever import LeverStrategy
+from automation.portals.strategies.workday import WorkdayStrategy
 from automation.portals.strategies.generic import GenericStrategy
 
 
@@ -40,6 +41,38 @@ async def test_lever_strategy_execution():
     assert plan.page_type.value == "APPLICATION_FORM"
     assert plan.submission_allowed is True
     assert evidence.submit_clicked is True
+
+
+@pytest.mark.asyncio
+async def test_workday_strategy_execution():
+    mock_page = AsyncMock()
+    mock_page.url = "https://siemens.wd3.myworkdayjobs.com/Siemens_Careers"
+    mock_page.title = AsyncMock(return_value="Siemens Careers - Apply")
+    mock_page.inner_text = AsyncMock(return_value="Workday Given Name, Family Name and Email.")
+
+    mock_email_elem = AsyncMock()
+    mock_email_elem.is_visible = AsyncMock(return_value=True)
+
+    mock_submit_elem = AsyncMock()
+    mock_submit_elem.is_visible = AsyncMock(return_value=True)
+    mock_submit_elem.scroll_into_view_if_needed = AsyncMock()
+    mock_submit_elem.click = AsyncMock()
+
+    async def fake_query(sel):
+        if "autocomplete='email'" in sel or "data-automation-id" in sel:
+            return mock_email_elem
+        if "button[type='submit']" in sel:
+            return mock_submit_elem
+        return None
+
+    mock_page.query_selector = AsyncMock(side_effect=fake_query)
+
+    strategy = WorkdayStrategy(company_name="siemens")
+    strategy.executor.mode = "live"
+    plan, evidence = await strategy.execute_application(mock_page)
+
+    assert plan.page_type.value == "APPLICATION_FORM"
+    assert plan.submission_allowed is True
 
 
 @pytest.mark.asyncio

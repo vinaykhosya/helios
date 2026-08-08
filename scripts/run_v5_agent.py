@@ -30,6 +30,7 @@ from automation.verifier import verify_job_freshness, get_canonical_requisition_
 from automation.portals.detector import PortalDetector
 from automation.portals.strategies.lever import LeverStrategy
 from automation.portals.strategies.greenhouse import GreenhouseStrategy
+from automation.portals.strategies.workday import WorkdayStrategy
 from automation.portals.strategies.generic import GenericStrategy
 from automation.fillers.semantic_filler import DEFAULT_CANDIDATE_PROFILE
 
@@ -41,6 +42,40 @@ vault = EncryptedCredentialVault()
 
 def safe_print(msg: str):
     print(msg.encode("ascii", errors="ignore").decode("ascii"))
+
+
+def print_forensic_table(portal_id, freshness, plan, evidence, mode):
+    safe_print("\n" + "─" * 60)
+    safe_print("PAGE UNDERSTANDING & SCHEMA")
+    safe_print("─" * 60)
+    safe_print(f"Portal Type:          {portal_id.type.upper()}")
+    safe_print(f"Company Tenant:       {portal_id.company.upper()}")
+    safe_print(f"Freshness Status:     {freshness.status_code}")
+    safe_print(f"Page Type:            {plan.page_type.value}")
+
+    safe_print("\n" + "─" * 60)
+    safe_print("EXECUTION PLAN ACTIONS")
+    safe_print("─" * 60)
+    safe_print(f"Total Actions:        {len(plan.actions)}")
+    for act in plan.actions:
+        safe_print(f"  [{act.action_type.value}] {act.target_semantic.value:<20} -> {act.target_selector}")
+
+    safe_print("\n" + "─" * 60)
+    safe_print("EXECUTION POLICY & SAFETY BOUNDARIES")
+    safe_print("─" * 60)
+    safe_print(f"Policy Mode:          {mode.upper()}")
+    safe_print(f"Submission Allowed:   {plan.submission_allowed}")
+    safe_print(f"Recovery Required:    {plan.recovery_required}")
+    safe_print(f"Recovery Reason:      {plan.recovery_reason.value}")
+
+    safe_print("\n" + "─" * 60)
+    safe_print("FORENSIC EVIDENCE & VERIFICATION RESULT")
+    safe_print("─" * 60)
+    safe_print(f"Submit Clicked:       {evidence.submit_clicked}")
+    safe_print(f"DOM Confirmation:     {evidence.live_dom_confirmation}")
+    safe_print(f"Application ID:       {evidence.application_id or 'None'}")
+    safe_print(f"App ID Source:        {evidence.application_id_source}")
+    safe_print("─" * 60 + "\n")
 
 
 async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
@@ -113,11 +148,13 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         with open(resume_pdf_path, "w", encoding="utf-8") as f:
             f.write("% PDF Binary\n" + tailored.get("tailored_tex", ""))
 
-        # Step 5: ATS Strategy Routing (Lever vs Greenhouse vs Generic)
+        # Step 5: ATS Strategy Routing (Lever vs Greenhouse vs Workday vs Generic)
         if portal_id.type == "lever":
             strategy = LeverStrategy(company_name=company.lower())
         elif portal_id.type == "greenhouse":
             strategy = GreenhouseStrategy(company_name=company.lower())
+        elif portal_id.type == "workday":
+            strategy = WorkdayStrategy(company_name=company.lower())
         else:
             strategy = GenericStrategy(company_name=company.lower())
 
@@ -153,15 +190,14 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
         # Step 6: Final Status Determination & Deduplication Recording
         if evidence.is_strong_evidence():
             forensic_log["final_status"] = "CONFIRMED_APPLIED"
-            safe_print("[RESULT] Application status: CONFIRMED_APPLIED (STRONG Evidence)")
             save_processed_key(target_url)
             await session_manager.save_session(context, company.lower(), auth_state="authenticated")
         elif plan.recovery_required:
             forensic_log["final_status"] = "RECOVERY_REQUIRED"
-            safe_print(f"[RESULT] Application status: RECOVERY_REQUIRED (Reason: {plan.recovery_reason.value})")
         else:
             forensic_log["final_status"] = f"{mode.upper()}_READY" if mode in ["plan_only", "dry_run"] else "SUBMISSION_UNVERIFIED"
-            safe_print(f"[RESULT] Application status: {forensic_log['final_status']} (Mode: {mode.upper()})")
+
+        print_forensic_table(portal_id, freshness, plan, evidence, mode)
 
         screenshot_path = os.path.join(base_dir, f"v5_agent_execution_{mode}.png")
         await page.screenshot(path=screenshot_path)
@@ -188,7 +224,7 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
     log_path = os.path.join(base_dir, f"v5_forensic_execution_record_{mode}.json")
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(forensic_log, f, indent=2)
-    safe_print(f"\n[FORENSIC RECORD persistent JSON written to {log_path}]")
+    safe_print(f"[FORENSIC RECORD persistent JSON written to {log_path}]")
 
     safe_print("\n" + "=" * 70)
     safe_print(f"[SUCCESS] HELIOS v5.0 PIPELINE EXECUTION COMPLETED ({mode.upper()})!")
