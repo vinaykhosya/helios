@@ -9,7 +9,7 @@ Enforces 4-Level Audit Hierarchy:
   1. UNIT_TEST: Mocked unit test execution
   2. LIVE_PORTAL_INSPECTED: Real portal reached & analyzed in plan_only mode
   3. LIVE_PORTAL_DRY_RUN: Real portal fields/actions executed, submit blocked in dry_run mode
-  4. LIVE_SUBMISSION_VERIFIED: Real submit occurred + live DOM confirmation obtained in live mode
+  4. LIVE_SUBMISSION_VERIFIED: Derived ONLY if ALL 8 evidence invariants pass in live mode!
 
 CLI Flags:
   --company CRED --url <requisition_url> [--plan-only | --dry-run | --live]
@@ -203,8 +203,18 @@ async def run_v5_pipeline(company: str, target_url: str, mode: str = "dry_run"):
             "application_id_source": evidence.application_id_source
         }
 
-        # Step 6: Final Status Determination & Validation Hierarchy Enforcement
-        if evidence.is_strong_evidence() and mode == "live":
+        # STRICT DERIVED INVARIANT CHECK FOR LIVE_SUBMISSION_VERIFIED & CONFIRMED_APPLIED
+        is_live_submission_verified = (
+            mode == "live"
+            and forensic_log["portal"]["reached"] is True
+            and forensic_log["portal"]["identity_verified"] is True
+            and forensic_log["submission"]["attempted"] is True
+            and forensic_log["submission"]["clicked"] is True
+            and (forensic_log["submission"]["dom_confirmation"] is True or forensic_log["submission"]["application_id"] is not None)
+            and (forensic_log["submission"]["application_id_source"] == "LIVE_PORTAL_DOM" or evidence.live_dom_confirmation)
+        )
+
+        if is_live_submission_verified:
             forensic_log["validation_level"] = "LIVE_SUBMISSION_VERIFIED"
             forensic_log["final_status"] = "CONFIRMED_APPLIED"
             save_processed_key(target_url)
