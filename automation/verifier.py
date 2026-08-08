@@ -10,6 +10,7 @@ import os
 import json
 import time
 import urllib.parse
+import re
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
 
@@ -43,10 +44,23 @@ def get_canonical_requisition_key(url: str) -> str:
         parts = [p for p in clean_path.split("/") if p and p != "apply" and p != "thanks"]
         if len(parts) >= 2:
             return f"lever:{parts[0]}:{parts[1]}"
+
+    # Handle Greenhouse URLs
     elif "greenhouse.io" in parsed.netloc:
         parts = [p for p in clean_path.split("/") if p and p != "apply"]
         if len(parts) >= 2:
             return f"greenhouse:{parts[0]}:{parts[-1]}"
+
+    # Handle Workday URLs (e.g. siemens.wd3.myworkdayjobs.com/en-US/Siemens_Careers/job/...)
+    elif "myworkdayjobs.com" in parsed.netloc:
+        company = parsed.netloc.split(".")[0]
+        match = re.search(r'/job/([^/]+)', clean_path)
+        if match:
+            return f"workday:{company}:{match.group(1)}"
+        parts = [p for p in clean_path.split("/") if p and p not in ["en-us", "job"]]
+        if len(parts) >= 2:
+            return f"workday:{company}:{parts[-1]}"
+        return f"workday:{company}:main"
     
     # Fallback to normalized base URL without query params
     return f"url:{parsed.netloc}{clean_path}"
@@ -59,7 +73,7 @@ def load_processed_keys() -> set:
                 data = json.load(f)
                 keys = set()
                 for item in data:
-                    if item.startswith("lever:") or item.startswith("greenhouse:") or item.startswith("url:"):
+                    if item.startswith("lever:") or item.startswith("greenhouse:") or item.startswith("workday:") or item.startswith("url:"):
                         keys.add(item)
                     else:
                         keys.add(get_canonical_requisition_key(item))
@@ -129,7 +143,7 @@ async def verify_post_submission_evidence(
     page,
     submit_clicked: bool = False,
     live_application_id: Optional[str] = None,
-    application_id_source: str = "UNKNOWN"
+    application_id_source: str = "NONE"
 ) -> EvidenceResult:
     """
     Calculates Evidence Score to verify application submission.
@@ -140,7 +154,7 @@ async def verify_post_submission_evidence(
         "submit_clicked": submit_clicked,
         "dom_confirmation": False,
         "application_id": live_application_id if application_id_source == "LIVE_PORTAL_DOM" else None,
-        "application_id_source": application_id_source,
+        "application_id_source": application_id_source if live_application_id else "NONE",
         "portal_history": False,
         "email_confirmation": False,
         "verified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -176,7 +190,7 @@ async def verify_post_submission_evidence(
         url_lower = page.url.lower()
         is_thanks_redirect = "/thanks" in url_lower or "confirm" in url_lower or "submitted" in url_lower
 
-        if (evidence["dom_confirmation"] or is_thanks_redirect or evidence["application_id"]):
+        if (evidence["dom_confirmation"] or is_thanks_redirect) and evidence["application_id"]:
             return EvidenceResult(
                 status="CONFIRMED_APPLIED",
                 score="STRONG",

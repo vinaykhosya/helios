@@ -7,6 +7,7 @@ error tracking, and produces the EvidencePayload contract.
 Supports Three-Level Execution Policy: "plan_only" vs "dry_run" vs "live".
 """
 import os
+import re
 from typing import List, Optional
 from automation.intelligence.contracts import (
     ExecutionPlan,
@@ -80,7 +81,7 @@ class ActionExecutor:
                         if btn and await btn.is_visible():
                             await btn.scroll_into_view_if_needed()
                             await btn.click()
-                            await page.wait_for_timeout(4000)
+                            await page.wait_for_timeout(5000)
                             rec.succeeded = True
                             submit_clicked = True
 
@@ -94,26 +95,31 @@ class ActionExecutor:
         body_text = (await page.inner_text("body")).lower()
         url_after_lower = url_after.lower()
 
-        # DOM Confirmation Check
+        # Robust DOM Confirmation Check
         dom_confirmation = (
             "/thanks" in url_after_lower
+            or "confirmation" in url_after_lower
             or "thanks for applying" in body_text
             or "application submitted" in body_text
             or "application received" in body_text
+            or "thank you for your application" in body_text
         )
 
         live_app_id = None
-        if "/thanks" in url_after_lower:
-            parts = url_after_lower.split("/")
-            for p in parts:
-                if len(p) > 10 and "-" in p:
-                    live_app_id = p
+        # Extract live application ID from post-submit DOM if available
+        if dom_confirmation:
+            match = re.search(r'(?:application|req|reference|id)\s*(?:#|id|number)?\s*:?\s*([a-z0-9\-]{6,25})', body_text, re.IGNORECASE)
+            if match:
+                live_app_id = match.group(1)
+
+        # STRICT EVIDENCE INVARIANT: If application_id is None, source MUST be "NONE"
+        app_id_source = "LIVE_PORTAL_DOM" if live_app_id else "NONE"
 
         return EvidencePayload(
             submit_clicked=submit_clicked,
             live_dom_confirmation=dom_confirmation,
             application_id=live_app_id,
-            application_id_source="LIVE_PORTAL_DOM" if live_app_id else ("NONE" if not submit_clicked else "DOM_TEXT"),
+            application_id_source=app_id_source,
             url_before=url_before,
             url_after=url_after,
             actions=action_records
