@@ -4,7 +4,6 @@ backend/src/api/google_sheets.py — Google Sheets integration and export routes
 from __future__ import annotations
 import os
 import uuid
-import csv
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,12 +13,9 @@ from sqlalchemy import select
 
 from backend.src.api.deps import get_db, get_current_user_id
 from database.models.integrations import GoogleSheetsConfigORM
+from backend.src.services.sheets_export_service import sync_local_excel_and_csv, EXCEL_PATH, CSV_PATH
 
 router = APIRouter(tags=["Google Sheets & Export"])
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-EXCEL_PATH = os.path.join(BASE_DIR, "data", "helios_jobs_two_tabs.xlsx")
-CSV_PATH = os.path.join(BASE_DIR, "data", "helios_live_jobs.csv")
 
 
 @router.get("/api/google-sheets/status")
@@ -30,7 +26,7 @@ async def sheets_status(
 ):
     """Return current Google Sheets integration status for the user."""
     has_sa = bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"))
-    sheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms")
+    sheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "1-fMsNdwrR-OPZvrLza1QpGtrIj8GhsEy")
     worksheet = "Helios Queue"
     is_active = False
 
@@ -74,7 +70,7 @@ async def connect_sheets(
     try:
         from integrations.google_sheets.client import GoogleSheetsClient
         client = GoogleSheetsClient(spreadsheet_id)
-        client.get_worksheet()   # validates access
+        client.get_worksheet()
 
         if session is not None:
             res = await session.execute(
@@ -90,7 +86,7 @@ async def connect_sheets(
                     id=str(uuid.uuid4()),
                     user_id=user_id,
                     spreadsheet_id=spreadsheet_id,
-                    worksheet_name="Helios Queue",
+                    worksheet_name="India (Delhi-NCR & Tech Hubs)",
                     is_active=True,
                     created_at=datetime.utcnow(),
                     last_sync_at=datetime.utcnow(),
@@ -109,33 +105,19 @@ async def sync_sheets(
     user_id: str = Depends(get_current_user_id),
     session: Optional[AsyncSession] = Depends(get_db),
 ):
-    """Triggers immediate push-only sync of discovered opportunities to Google Sheets."""
+    """
+    Triggers immediate push-only sync of all discovered opportunities to:
+    1. Local 2-Tab Excel workbook (helios_jobs_two_tabs.xlsx)
+    2. Local Master CSV (helios_live_jobs.csv)
+    3. Google Sheets (Spreadsheet ID: 1-fMsNdwrR-OPZvrLza1QpGtrIj8GhsEy) across both tabs.
+    """
     from backend.src.api.jobs import IN_MEMORY_JOBS
-    
-    if os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"):
-        try:
-            from integrations.google_sheets.client import GoogleSheetsClient
-            sheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
-            if sheet_id:
-                client = GoogleSheetsClient(sheet_id)
-                return {
-                    "status": "success",
-                    "rows_synced": len(IN_MEMORY_JOBS),
-                    "message": f"Successfully pushed {len(IN_MEMORY_JOBS)} jobs to Google Sheets (Push-Only V1).",
-                    "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{sheet_id}",
-                }
-        except Exception as e:
-            print(f"[GoogleSheetsSync] API notice: {e}")
-
-    return {
-        "status": "success",
-        "rows_synced": len(IN_MEMORY_JOBS) if IN_MEMORY_JOBS else 324,
-        "message": f"Export queue updated. {len(IN_MEMORY_JOBS) if IN_MEMORY_JOBS else 324} jobs synced to projection ledger.",
-        "spreadsheet_url": "https://docs.google.com/spreadsheets",
-    }
+    res = sync_local_excel_and_csv(IN_MEMORY_JOBS)
+    return res
 
 
 @router.get("/api/v1/export/excel")
+@router.get("/data/helios_jobs_two_tabs.xlsx")
 async def export_excel():
     """Downloads authoritative Excel (.xlsx) workbook containing 2 tabs (India & Remote)."""
     if os.path.exists(EXCEL_PATH):
@@ -148,6 +130,7 @@ async def export_excel():
 
 
 @router.get("/api/v1/export/csv")
+@router.get("/data/helios_live_jobs.csv")
 async def export_csv():
     """Downloads authoritative CSV dataset."""
     if os.path.exists(CSV_PATH):

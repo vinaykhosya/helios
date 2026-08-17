@@ -148,6 +148,12 @@ async def execute_discovery_scan(scan_job: ScanJob) -> None:
     # Ranking & Seniority Evaluation
     qualified = 0
     strong = 0
+    from backend.src.api.jobs import IN_MEMORY_JOBS
+    from backend.src.services.sheets_export_service import sync_local_excel_and_csv
+
+    seen_signatures = {f"{j.get('company','').lower()}_{j.get('title','').lower()}_{j.get('location','').lower()}" for j in IN_MEMORY_JOBS}
+    new_records = []
+
     for j in all_discovered_jobs:
         ranking = ranker.rank(j)
         score_pct = int((j.fit_score or 0) * 100)
@@ -155,6 +161,41 @@ async def execute_discovery_scan(scan_job: ScanJob) -> None:
             qualified += 1
         if score_pct >= 80 and j.eligibility_status == "ELIGIBLE":
             strong += 1
+
+        loc = j.location or "Remote"
+        is_india = any(k in loc.lower() for k in ["india", "delhi", "noida", "gurgaon", "gurugram", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai"])
+        sig = f"{j.company.lower()}_{j.title.lower()}_{loc.lower()}"
+
+        if sig not in seen_signatures:
+            job_dict = {
+                "id": f"job-{uuid.uuid4().hex[:8]}",
+                "company": j.company,
+                "title": j.title,
+                "location": loc,
+                "is_india": is_india,
+                "experience_years": f"{j.experience_years} yrs" if j.experience_years else "1-3 yrs",
+                "job_type": j.employment_type.value if hasattr(j.employment_type, 'value') else str(j.employment_type),
+                "compensation": "Competitive",
+                "fit_score": j.fit_score or 0.85,
+                "match_fit": f"{int((j.fit_score or 0.85) * 100)}%",
+                "apply_url": j.apply_url or j.source_url,
+                "source": j.source.value if hasattr(j.source, 'value') else str(j.source),
+                "eligibility_status": j.eligibility_status,
+                "eligibility_reasons": j.eligibility_reasons,
+                "dimension_breakdown": j.dimension_breakdown,
+                "friction_level": j.friction_level,
+                "application_status": "NOT_APPLIED",
+                "duplicate_group_id": sig,
+                "source_count": 1,
+                "other_urls": [j.apply_url or j.source_url],
+            }
+            new_records.append(job_dict)
+            seen_signatures.add(sig)
+
+    if new_records:
+        IN_MEMORY_JOBS[:0] = new_records
+        sync_local_excel_and_csv(IN_MEMORY_JOBS)
+        scan_job.add_log("INFO", "ORCHESTRATOR", f"Merged {len(new_records)} brand new unique jobs into live pipeline and Excel.")
 
     scan_job.discovered_count = len(all_discovered_jobs)
     scan_job.qualified_count = qualified

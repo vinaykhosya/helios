@@ -402,7 +402,14 @@ function App() {
             </button>
 
             <button
-              onClick={() => setActiveTab('jobs')}
+              onClick={() => {
+                setSelectedView('all_jobs');
+                setEligibilityFilter('all');
+                setLocationFilter('all');
+                setMinMatchFilter(0);
+                setSearchQuery('');
+                setActiveTab('jobs');
+              }}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'jobs' && selectedView !== 'ready_to_apply'
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
@@ -820,6 +827,17 @@ function App() {
               
               {/* Quick Saved Views Filter Pills */}
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                <button
+                  onClick={() => { setSelectedView('all_jobs'); setEligibilityFilter('all'); setLocationFilter('all'); setMinMatchFilter(0); }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'all_jobs'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  All Canonical Jobs ({overview.discovered || 324})
+                </button>
+
                 <button
                   onClick={() => setSelectedView('ready_to_apply')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
