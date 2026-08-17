@@ -280,20 +280,22 @@ function App() {
     }
   }
 
-  async function handleSaveLatex() {
+  async function handleSyncSheets() {
     try {
-      const res = await fetch('/api/v1/profiles/resume/template', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile_id: activeProfile, latex_content: masterLatex }),
-      });
+      const res = await fetch('/api/v1/sheets/sync', { method: 'POST' });
       if (res.ok) {
-        setLatexSavedMsg("✓ Master LaTeX template saved successfully!");
-        setTimeout(() => setLatexSavedMsg(""), 3000);
+        const data = await res.json();
+        alert(`📊 ${data.message || 'Synced successfully to Google Sheets projection!'}`);
       }
     } catch (e) {
-      alert("Error saving LaTeX: " + e.message);
+      alert("Sheets sync error: " + e.message);
     }
+  }
+
+  function handleRefreshAll() {
+    fetchDashboardOverview();
+    fetchJobs();
+    fetchLatestScan();
   }
 
   // Filtered Jobs Computation
@@ -488,23 +490,77 @@ function App() {
             <span className="text-xs text-slate-400">Candidate: <strong className="text-slate-200">Vinay Khosya (NSUT Delhi)</strong></span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Quick Live Search Trigger */}
+            <button
+              onClick={() => { setActiveTab('scans'); }}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow transition-all"
+              title="Search live jobs across 35+ tech career portals"
+            >
+              <i data-lucide="search" className="w-3.5 h-3.5"></i>
+              Search Jobs ⚡
+            </button>
+
+            {/* Google Sheets Sync Trigger */}
+            <button
+              onClick={handleSyncSheets}
+              className="flex items-center gap-1.5 bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-700/50 text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+              title="Push latest opportunity queue to Google Sheets"
+            >
+              <i data-lucide="table" className="w-3.5 h-3.5"></i>
+              Sync Sheets
+            </button>
+
+            {/* Direct Google Sheets Web Link */}
             <a
               href="https://docs.google.com/spreadsheets"
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-2 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-700/40 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+              title="Open Google Spreadsheet"
             >
-              <i data-lucide="table" className="w-3.5 h-3.5"></i>
-              Open Google Sheet ↗
+              Open Sheet ↗
             </a>
 
+            {/* Download Excel (.xlsx) */}
+            <a
+              href="/api/v1/export/excel"
+              download="helios_jobs_two_tabs.xlsx"
+              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+              title="Download 2-Tab Excel Workbook (.xlsx)"
+            >
+              <i data-lucide="file-spreadsheet" className="w-3.5 h-3.5"></i>
+              Excel
+            </a>
+
+            {/* Download CSV */}
+            <a
+              href="/api/v1/export/csv"
+              download="helios_live_jobs.csv"
+              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+              title="Download Master CSV"
+            >
+              <i data-lucide="download" className="w-3.5 h-3.5"></i>
+              CSV
+            </a>
+
+            {/* Telegram Ping */}
             <button
               onClick={handleSendTelegramPing}
-              className="flex items-center gap-2 bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 border border-blue-700/40 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-all"
+              title="Send test alert to Telegram"
             >
               <i data-lucide="send" className="w-3.5 h-3.5"></i>
-              Telegram Ping
+              Ping
+            </button>
+
+            {/* Refresh Live Data */}
+            <button
+              onClick={handleRefreshAll}
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg transition-all"
+              title="Refresh live data"
+            >
+              <i data-lucide="refresh-cw" className="w-3.5 h-3.5"></i>
             </button>
           </div>
         </header>
