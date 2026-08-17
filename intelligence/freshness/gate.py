@@ -268,31 +268,48 @@ class FreshnessGate:
     def resolve_canonical_dates(existing_dict: dict, incoming_dict: dict) -> dict:
         """
         Deduplication date merge rule:
-          - Canonical posting timestamp is the EARLIER genuine date to prevent artificial rejuvenation.
-          - Verified repost timestamps (`CONFIRMED_REPOSTED`) override if newer.
+          - If EITHER record is a confirmed repost (`CONFIRMED_REPOSTED` or `is_reposted=True`),
+            the genuine repost date supersedes older initial posting dates.
+          - Otherwise (ordinary updates or initial posts), canonical posting timestamp
+            is the EARLIER genuine date to prevent artificial rejuvenation.
         """
-        ex_dt = existing_dict.get("freshness_reference_at") or existing_dict.get("posted_at")
-        in_dt = incoming_dict.get("freshness_reference_at") or incoming_dict.get("posted_at")
+        ex_is_repost = bool(existing_dict.get("is_reposted") or existing_dict.get("freshness_confidence") in [FreshnessConfidence.CONFIRMED_REPOSTED, "CONFIRMED_REPOSTED", "FreshnessConfidence.CONFIRMED_REPOSTED"])
+        in_is_repost = bool(incoming_dict.get("is_reposted") or incoming_dict.get("freshness_confidence") in [FreshnessConfidence.CONFIRMED_REPOSTED, "CONFIRMED_REPOSTED", "FreshnessConfidence.CONFIRMED_REPOSTED"])
+
+        ex_dt = existing_dict.get("reposted_at") if ex_is_repost else (existing_dict.get("freshness_reference_at") or existing_dict.get("posted_at"))
+        in_dt = incoming_dict.get("reposted_at") if in_is_repost else (incoming_dict.get("freshness_reference_at") or incoming_dict.get("posted_at"))
 
         if isinstance(ex_dt, str):
             ex_dt, _, _ = parse_timestamp(ex_dt)
         if isinstance(in_dt, str):
             in_dt, _, _ = parse_timestamp(in_dt)
 
-        # If incoming is a confirmed repost, use incoming
-        if incoming_dict.get("is_reposted") and in_dt:
+        # 1. If incoming is a confirmed repost, it overrides
+        if in_is_repost and in_dt:
+            incoming_dict["is_reposted"] = True
+            incoming_dict["reposted_at"] = in_dt
+            incoming_dict["freshness_reference_at"] = in_dt
+            incoming_dict["freshness_confidence"] = FreshnessConfidence.CONFIRMED_REPOSTED
             return incoming_dict
 
-        # If existing is earlier genuine date, keep existing date
+        # 2. If existing was a confirmed repost and incoming is not, keep existing repost date
+        if ex_is_repost and ex_dt:
+            incoming_dict["is_reposted"] = True
+            incoming_dict["reposted_at"] = ex_dt
+            incoming_dict["freshness_reference_at"] = ex_dt
+            incoming_dict["freshness_confidence"] = FreshnessConfidence.CONFIRMED_REPOSTED
+            return incoming_dict
+
+        # 3. Neither is a confirmed repost: earlier genuine date wins to prevent artificial rejuvenation
         if ex_dt and in_dt:
-            if ex_dt <= in_dt:
-                incoming_dict["posted_at"] = ex_dt
-                incoming_dict["freshness_reference_at"] = ex_dt
-            else:
-                incoming_dict["posted_at"] = in_dt
-                incoming_dict["freshness_reference_at"] = in_dt
+            earlier_dt = min(ex_dt, in_dt)
+            incoming_dict["posted_at"] = earlier_dt
+            incoming_dict["freshness_reference_at"] = earlier_dt
         elif ex_dt and not in_dt:
             incoming_dict["posted_at"] = ex_dt
             incoming_dict["freshness_reference_at"] = ex_dt
+        elif in_dt and not ex_dt:
+            incoming_dict["posted_at"] = in_dt
+            incoming_dict["freshness_reference_at"] = in_dt
 
         return incoming_dict

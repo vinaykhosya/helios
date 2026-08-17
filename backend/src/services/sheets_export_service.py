@@ -120,7 +120,7 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
             pass
 
         is_ready_prio = 0 if "YES" in r["Ready to Apply"] else 1
-        return (is_ready_prio, age_val, -fit_val)
+        return (is_ready_prio, -fit_val, age_val)
 
     india_rows.sort(key=sort_key)
     remote_rows.sort(key=sort_key)

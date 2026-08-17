@@ -235,8 +235,8 @@ async def list_jobs(
     if saved_view == "ready_to_apply":
         # INVARIANT #14: Eligible + Match >= 80% + Fresh (age <= 7d) + Low/Med Friction + Not Applied
         results = [j for j in results if gate.is_ready_to_apply(j)]
-        # Sort primarily by freshness urgency (age_days ascending) and secondarily by fit_score descending
-        results.sort(key=lambda x: (x.get("age_days") if x.get("age_days") is not None else 999, -(x.get("fit_score") or 0)))
+        # Priority sort: Match Quality (descending) -> Freshness Urgency (age_days ascending) -> Friction Level
+        results.sort(key=lambda x: (-(x.get("fit_score") or 0.0), x.get("age_days") if x.get("age_days") is not None else 999, 0 if str(x.get("friction_level", "LOW")).upper() == "LOW" else 1))
     elif saved_view == "fresh_only":
         results = [j for j in results if j.get("freshness_status") == "FRESH"]
     elif saved_view == "aging_only":

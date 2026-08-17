@@ -304,3 +304,47 @@ def test_canonical_merge_keeps_earlier_genuine_date():
     incoming = {"posted_at": datetime(2026, 8, 14, 10, 0), "freshness_reference_at": datetime(2026, 8, 14, 10, 0), "is_reposted": False}
     merged = FreshnessGate.resolve_canonical_dates(existing, incoming)
     assert merged["posted_at"] == datetime(2026, 8, 10, 10, 0)
+    assert merged["freshness_reference_at"] == datetime(2026, 8, 10, 10, 0)
+
+
+def test_canonical_merge_with_confirmed_repost_uses_repost_date(gate, ref_now):
+    """
+    Edge case verification:
+      Source A: original post 30 days ago
+      Source B: confirmed repost 2 days ago
+      Resulting job must evaluate to FRESH (age = 2 days).
+    """
+    source_a_existing = {
+        "posted_at": ref_now - timedelta(days=30),
+        "freshness_reference_at": ref_now - timedelta(days=30),
+        "is_reposted": False,
+    }
+    source_b_incoming = {
+        "posted_at": ref_now - timedelta(days=30),
+        "is_reposted": True,
+        "reposted_at": ref_now - timedelta(days=2),
+        "freshness_confidence": FreshnessConfidence.CONFIRMED_REPOSTED,
+    }
+    merged = FreshnessGate.resolve_canonical_dates(source_a_existing, source_b_incoming)
+    assert merged["is_reposted"] is True
+    assert merged["freshness_reference_at"] == ref_now - timedelta(days=2)
+    assert merged["freshness_confidence"] == FreshnessConfidence.CONFIRMED_REPOSTED
+
+    # Evaluate the merged record with FreshnessGate
+    job = Job(
+        source=JobSource.LINKEDIN,
+        source_id="repost-merge-1",
+        source_url="https://linkedin.com/jobs/view/123",
+        title="Senior Backend Engineer",
+        company="Stripe",
+        posted_at=merged.get("posted_at"),
+        is_reposted=merged.get("is_reposted"),
+        reposted_at=merged.get("reposted_at"),
+        freshness_confidence=merged.get("freshness_confidence"),
+        fit_score=0.92,
+        apply_url="https://stripe.com/apply",
+    )
+    evaluated = gate.evaluate_job(job, current_time=ref_now)
+    assert evaluated.age_days == 2
+    assert evaluated.freshness_status == FreshnessStatus.FRESH
+    assert gate.is_ready_to_apply(evaluated) is True

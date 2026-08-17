@@ -386,11 +386,15 @@ function App() {
     return true;
   }).sort((a, b) => {
     if (selectedView === 'ready_to_apply') {
-      // Sort primarily by freshness urgency (0d, 1d, 2d...) and then by fit_score descending
+      // Priority: Match Quality (descending) -> Freshness Urgency (age ascending) -> Friction (Low first)
+      const fitDiff = (b.fit_score || 0) - (a.fit_score || 0);
+      if (Math.abs(fitDiff) > 0.001) return fitDiff;
       const ageA = a.age_days !== undefined && a.age_days !== null ? a.age_days : 999;
       const ageB = b.age_days !== undefined && b.age_days !== null ? b.age_days : 999;
       if (ageA !== ageB) return ageA - ageB;
-      return (b.fit_score || 0) - (a.fit_score || 0);
+      const fricRankA = a.friction_level === 'LOW' ? 0 : 1;
+      const fricRankB = b.friction_level === 'LOW' ? 0 : 1;
+      return fricRankA - fricRankB;
     }
     return (b.fit_score || 0) - (a.fit_score || 0);
   });
