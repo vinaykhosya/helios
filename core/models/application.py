@@ -17,8 +17,32 @@ from pydantic import BaseModel, Field
 class ApplicationStatus(str, Enum):
     """
     Ordered application lifecycle states.
+
+    Human Queue path (ASK_USER routing):
+      PENDING_MANUAL    — job routed to Human Queue; no application submitted yet.
+                          ApplicationORM exists. HumanQueueORM exists. User has not applied.
+      SUBMITTED_MANUAL  — user manually applied and confirmed via /mark-applied.
+                          applied_at is set. HumanQueueORM.decision = completed.
+
+    Automation path (AUTO_APPLY routing):
+      AUTOMATION_QUEUED — queued for Playwright automation.
+                          ApplicationORM exists. Playwright has NOT yet run.
+                          INVARIANT: ApplicationSubmitted is NEVER emitted at this status.
+                          Only emitted after Playwright verifies submission evidence (Phase 5).
+
+    Shared outcome states (set by EmailApplicationMatcher, Gmail tracker, user):
+      APPLIED, PHONE_SCREEN, TECHNICAL, CASE, FINAL, OFFER, etc.
+
     Transitions are enforced by ApplicationService.
     """
+    # ─ Human Queue path ────────────────────────────────────────────────────
+    PENDING_MANUAL = "pending_manual"
+    SUBMITTED_MANUAL = "submitted_manual"
+
+    # ─ Automation path ───────────────────────────────────────────────────
+    AUTOMATION_QUEUED = "automation_queued"
+
+    # ─ Legacy / shared outcome states ─────────────────────────────────────
     SAVED = "saved"
     APPLIED = "applied"
     PHONE_SCREEN = "phone_screen"

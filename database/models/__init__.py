@@ -19,6 +19,8 @@ from database.models.system import (
     ConnectorErrorORM,
     AuditLogORM,
 )
+from database.models.human_queue import HumanQueueORM  # noqa
+from database.models.integrations import GoogleSheetsConfigORM  # noqa
 
 __all__ = [
     "Base",
@@ -45,4 +47,6 @@ __all__ = [
     "ConnectorRunORM",
     "ConnectorErrorORM",
     "AuditLogORM",
+    # Human Queue
+    "HumanQueueORM",
 ]

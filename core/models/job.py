@@ -30,6 +30,7 @@ class JobSource(str, Enum):
     LINKEDIN = "linkedin"
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
+    ASHBY = "ashby"
     WELLFOUND = "wellfound"
     REMOTEOK = "remoteok"
     NAUKRI = "naukri"
@@ -119,9 +120,16 @@ class Job(BaseModel):
     # ── Application ───────────────────────────────────────────────────────────
     apply_url: Optional[str] = None
 
-    # ── Intelligence (populated by pipeline stages) ───────────────────────────
+    # ── Intelligence & Eligibility (populated by pipeline stages) ───────────
     fit_score: Optional[float] = None        # 0.0–1.0, set by RankerStage
     embedding_id: Optional[str] = None       # FK to job_embeddings, set by EmbeddingGeneratorStage
+    eligibility_status: str = "ELIGIBLE"     # ELIGIBLE | SENIORITY_MISMATCH | ROLE_MISMATCH | LOCATION_MISMATCH
+    eligibility_reasons: list[str] = Field(default_factory=list)
+    duplicate_group_id: Optional[str] = None
+    source_count: int = 1
+    dimension_breakdown: dict[str, float] = Field(default_factory=dict)
+    friction_level: str = "LOW"
+    application_status: str = "NOT_APPLIED"  # NOT_APPLIED | APPLIED | SKIPPED
     is_active: bool = True
     idempotency_key: Optional[str] = None     # SHA256(source + source_id + updated_at)
 

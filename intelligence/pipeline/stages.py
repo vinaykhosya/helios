@@ -160,24 +160,22 @@ class CompanyResolverStage(BasePipelineStage):
 
 class EmbeddingGeneratorStage(BasePipelineStage):
     """
-    Stage 4 — Generate and store vector embeddings for each job.
+    Stage 4 — Embedding generation stub.
 
-    Input text for embedding:
-      f"{job.title}. {job.description[:2000]}. Skills: {', '.join(job.skills)}"
+    ARCHITECTURE NOTE (v3.0):
+    This stage is a no-op in the current pipeline. Embedding generation has been
+    moved to EmbeddingWorker, which runs AFTER PersistenceStage via the event chain:
+      JobPersisted → EmbeddingWorker → EmbeddingGenerated → WorkflowOrchestrator
 
-    Process:
-      1. Call the configured embedding provider (OpenAI text-embedding-3-small or equivalent).
-      2. Store the vector in the job_embeddings table.
-      3. Set job.embedding_id to the stored record's ID.
-
-    Used by RankerStage to compute cosine similarity against user embeddings.
-    Phase 4 implementation (requires pgvector and an embedding provider).
+    The stage is kept in INGESTION_PIPELINE for backward compatibility with
+    any code that enumerates pipeline stages. It passes jobs through unchanged.
     """
 
     name = "embedding_generator"
 
     async def process(self, jobs: list[Job]) -> list[Job]:
-        raise NotImplementedError("EmbeddingGeneratorStage is implemented in Phase 4.")
+        # No-op: embedding is handled by EmbeddingWorker post-persistence
+        return jobs
 
 
 class RankerStage(BasePipelineStage):
@@ -250,9 +248,9 @@ INGESTION_PIPELINE: list[type[BasePipelineStage]] = [
     NormalizerStage,
     DeduplicatorStage,
     CompanyResolverStage,
-    EmbeddingGeneratorStage,
-    RankerStage,
-    PersistenceStage,
+    PersistenceStage,         # Persist FIRST — triggers JobPersisted event
+    EmbeddingGeneratorStage,  # No-op stub (real embedding in EmbeddingWorker)
+    RankerStage,              # No-op in event-driven flow (ranking in WorkflowOrchestrator)
 ]
 """
 The canonical Helios ingestion pipeline.

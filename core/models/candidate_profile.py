@@ -17,6 +17,12 @@ class CandidateProfile(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
+    # Profile Metadata & Multi-Profile Lens
+    id: str = Field("ai_ml", description="Unique profile slug e.g. ai_ml, backend, fullstack")
+    profile_name: str = Field("AI & ML Systems Engineer", description="Display name for profile lens")
+    resume_template_path: str = Field("templates/master_resume.tex", description="Path to LaTeX resume template")
+    master_resume_latex: Optional[str] = Field(None, description="Raw LaTeX markup string if stored directly")
+
     # Candidate Identity & Basics
     name: str = Field(..., description="Full legal name of candidate")
     email: str = Field(..., description="Primary contact email")
@@ -49,3 +55,9 @@ class CandidateProfile(BaseModel):
     preferred_company_sizes: list[str] = Field(default_factory=list)
     preferred_industries: list[str] = Field(default_factory=list)
     ideal_role_keywords: list[str] = Field(default_factory=list)
+
+
+class MultiProfileConfig(BaseModel):
+    """Container for multi-role profiles with an active profile lens."""
+    active_profile_id: str = "ai_ml"
+    profiles: dict[str, CandidateProfile] = Field(default_factory=dict)

@@ -19,11 +19,11 @@ class GreenhouseJob(BaseModel):
 
     id: int
     title: str
-    content: str = ""
-    updated_at: str = ""
-    absolute_url: str = ""
-    location: dict = Field(default_factory=dict)
-    metadata: list = Field(default_factory=list)
+    content: Optional[str] = ""
+    updated_at: Optional[str] = ""
+    absolute_url: Optional[str] = ""
+    location: Optional[dict] = Field(default_factory=dict)
+    metadata: Optional[list] = Field(default_factory=list)
 
 
 class GreenhouseConnector(BaseConnector):

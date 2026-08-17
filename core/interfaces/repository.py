@@ -94,3 +94,19 @@ class UserRepository(Protocol):
 
     async def update(self, user: User) -> User:
         ...
+
+
+class EmbeddingRepository(Protocol):
+    """Protocol for vector embedding persistence and retrieval."""
+
+    async def store(self, entity_id: str, embedding_id: str, vector: list[float], model: str) -> None:
+        """Store embedding vector for an entity (job)."""
+        ...
+
+    async def get_by_id(self, embedding_id: str) -> Optional[dict]:
+        """Retrieve stored embedding record by embedding UUID."""
+        ...
+
+    async def get_by_job_id(self, job_id: str) -> Optional[dict]:
+        """Retrieve stored embedding record by job UUID."""
+        ...

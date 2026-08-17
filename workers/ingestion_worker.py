@@ -3,10 +3,11 @@ workers/ingestion_worker.py
 
 IngestionWorker class (synchronous worker runtime).
 Subscribes to JobDiscovered events, executes the pipeline stages, and commits jobs to the database.
+Emits JobPersisted AFTER persistence — this is the trigger for EmbeddingWorker.
 """
 from __future__ import annotations
 
-from core.events.definitions import JobDiscovered
+from core.events.definitions import JobDiscovered, JobPersisted
 from core.interfaces.event_bus import EventBus
 from core.interfaces.repository import JobRepository, CompanyRepository
 from core.models.job import Job, JobSource
@@ -69,4 +70,15 @@ class IngestionWorker:
         jobs = await normalizer.process(jobs)
         jobs = await deduplicator.process(jobs)
         jobs = await resolver.process(jobs)
-        await persistence.process(jobs)
+        persisted_jobs = await persistence.process(jobs)
+
+        # Emit JobPersisted for each job that was committed to the DB.
+        # This triggers EmbeddingWorker → EmbeddingGenerated → WorkflowOrchestrator.
+        # INVARIANT: emitted AFTER persistence, so job.id is a real DB UUID.
+        for job in (persisted_jobs or []):
+            await self._event_bus.publish(JobPersisted(
+                job_id=str(job.id),
+                source=str(job.source),
+                source_url=job.source_url or "",
+                correlation_id=event.correlation_id,   # propagate trace
+            ))

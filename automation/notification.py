@@ -59,9 +59,10 @@ class TelegramNotifier:
         job: Job,
         ranking: RankingResult,
         pause_reason: Optional[str] = None,
+        entry_id: Optional[str] = None,
     ) -> PendingApproval:
         """
-        Creates pending approval record and sends notification.
+        Creates pending approval record and sends notification with inline buttons if entry_id is provided.
         """
         pending = PendingApproval(
             job_id=str(job.id),
@@ -77,14 +78,22 @@ class TelegramNotifier:
         if self.bot_token and self.chat_id:
             try:
                 import httpx
+                payload: dict = {
+                    "chat_id": self.chat_id,
+                    "text": msg,
+                    "parse_mode": "HTML",
+                }
+                if entry_id:
+                    payload["reply_markup"] = {
+                        "inline_keyboard": [[
+                            {"text": "✅ Approve", "callback_data": f"approve:{entry_id}"},
+                            {"text": "⏭ Skip",    "callback_data": f"skip:{entry_id}"},
+                        ]]
+                    }
                 async with httpx.AsyncClient() as client:
                     resp = await client.post(
                         f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
-                        json={
-                            "chat_id": self.chat_id,
-                            "text": msg,
-                            "parse_mode": "HTML",
-                        },
+                        json=payload,
                         timeout=10.0,
                     )
                     if resp.status_code != 200:
@@ -93,6 +102,20 @@ class TelegramNotifier:
                 print(f"TelegramNotifier error: {e}")
 
         return pending
+
+    async def send_message(self, text: str) -> None:
+        """Send a plain message without approval buttons."""
+        if self.bot_token and self.chat_id:
+            try:
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
+                        json={"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"},
+                        timeout=10.0,
+                    )
+            except Exception as e:
+                print(f"TelegramNotifier.send_message error: {e}")
 
     async def respond(self, pending_id: str, approved: bool) -> bool:
         """

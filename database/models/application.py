@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, JSON, DateTime, ForeignKey, Numeric, Integer, Boolean
+from sqlalchemy import String, JSON, DateTime, ForeignKey, Numeric, Integer, Boolean, UniqueConstraint
 from database.models.base import Base
 
 
@@ -16,6 +16,12 @@ class ApplicationORM(Base):
     """ORM representation of the applications table."""
 
     __tablename__ = "applications"
+    __table_args__ = (
+        # Invariant #10: one application per (user, job).
+        # Enforced at DB level, not just application layer.
+        # To support reapplication: drop this constraint and add application_attempt_number.
+        UniqueConstraint("user_id", "job_id", name="uq_application_user_job"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

@@ -41,4 +41,14 @@ try:
         """Render pgvector Vector as JSON in SQLite."""
         return "JSON"
 except ImportError:
-    pass
+    from sqlalchemy.types import TypeDecorator, JSON
+
+    class Vector(TypeDecorator):
+        """Fallback Vector type for SQLite and testing when pgvector is not available."""
+        impl = JSON
+        cache_ok = True
+
+        def __init__(self, dim: int | None = None, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.dim = dim
+

@@ -3,17 +3,31 @@ venv/
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
+dist/
+build/
 
-# Helios Sensitive Credentials & Sessions Data
+# Helios Sensitive Credentials, Secrets & Keys
 data/credentials/
 data/sessions/
 *.secret
 .env
-.env.local
+.env.*
+!.env.example
+service_account.json
+credentials.json
+token.json
+client_secrets.json
 
-# Build & System Artifacts
+# Build, Log & System Artifacts
 *.pdf
+*.log
+*.png
 v5_forensic_execution_record_*.json
 v5_agent_execution_*.png
 vertical_slice_test*.png
 .pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db

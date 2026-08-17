@@ -23,11 +23,13 @@ from core.interfaces.repository import (
     CompanyRepository,
     ApplicationRepository,
     UserRepository,
+    EmbeddingRepository,
 )
 from backend.src.repositories.job import SQLAlchemyJobRepository
 from backend.src.repositories.company import SQLAlchemyCompanyRepository
 from backend.src.repositories.application import SQLAlchemyApplicationRepository
 from backend.src.repositories.user import SQLAlchemyUserRepository
+from backend.src.repositories.embedding import SQLAlchemyEmbeddingRepository
 
 T = TypeVar("T")
 
@@ -47,6 +49,7 @@ class DIContainer:
         CompanyRepository: SQLAlchemyCompanyRepository,
         ApplicationRepository: SQLAlchemyApplicationRepository,
         UserRepository: SQLAlchemyUserRepository,
+        EmbeddingRepository: SQLAlchemyEmbeddingRepository,
     }
 
     @classmethod

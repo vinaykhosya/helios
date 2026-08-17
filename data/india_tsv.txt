@@ -1,0 +1,23 @@
+Company	Role / Title	Job Type	Experience Level	Location / Remote	Salary / CTC / Stipend	Match Fit	Apply Link
+Figma	Account Executive, Enterprise (Bengaluru, India)	Full-Time (General)	1-3 yrs (Standard)	Bengaluru, India	Competitive (Market Standard)	89%	https://boards.greenhouse.io/figma/jobs/5579204004?gh_jid=5579204004
+Databricks	Account Executive 	Full-Time (General)	1-3 yrs (Standard)	Bengaluru, India; Mumbai, India	Competitive (Market Standard)	89%	https://databricks.com/company/careers/open-positions/job?gh_jid=6918763002
+Meesho	Automation engineer (Warehouse Automation)	Full-Time (General)	1-3 yrs (Standard)	Bangalore, Karnataka	Competitive (Market Standard)	71%	https://jobs.lever.co/meesho/fe839191-1761-4094-9d3c-4d554904b84d
+Meesho	Assistant Manager Finance – Logistics Intelligence	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	70%	https://jobs.lever.co/meesho/3032374b-0010-4d19-8dd1-26c37c396cba
+Meesho	Associate Director — Industry Intelligence & Benchmarking	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	70%	https://jobs.lever.co/meesho/9251a5a3-041e-49a1-b3a8-9db1ba22989a
+Mongodb	Account Development Representative	Full-Time (General)	1-3 yrs (Standard)	Bengaluru	Competitive (Market Standard)	69%	https://www.mongodb.com/careers/job/?gh_jid=7318466
+Mongodb	Account Development Representative	Full-Time (General)	1-3 yrs (Standard)	Gurugram	Competitive (Market Standard)	69%	https://www.mongodb.com/careers/job/?gh_jid=7318558
+Cred	business development & partnerships	Full-Time (General)	1-3 yrs (Standard)	bengaluru	Competitive (Market Standard)	69%	https://jobs.lever.co/cred/09022710-e79a-4cf0-8060-df0e1cd64263
+Cred	business development & partnerships – commercial lead	Senior / Lead (5+ yrs)	5+ yrs	bengaluru	Competitive (Market Standard)	69%	https://jobs.lever.co/cred/b532b595-bc8d-4b51-a2e6-7228ef1cabfc
+Cred	growth and business - max and wallet	Full-Time (General)	1-3 yrs (Standard)	bengaluru	Competitive (Market Standard)	69%	https://jobs.lever.co/cred/37f0a1b9-e5a1-45de-ada6-f8363bb877f6
+Cred	web developer - Prefr	Full-Time (General)	1-3 yrs (Standard)	hyderabad	Competitive (Market Standard)	69%	https://jobs.lever.co/cred/58dfc330-090b-4318-a395-cc7280cf5065
+Meesho	AM/ Manager - Risk & Decision Science	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/7d9af9b5-c1c7-48ec-bbb5-9b25e49f6596
+Meesho	Assistant Manager - Business Finance	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/22c4a7a0-43be-439e-9473-2f8074b3e8d5
+Meesho	Assistant Manager - Ops	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/5afe596f-17a2-4e8b-a498-ca46b2c7a869
+Meesho	Assistant Manager - Taxation	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/49b47b8e-6ed5-4b72-9310-c69a49113b40
+Meesho	Assistant Manager – HR	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/8cd64fd4-4ed2-4aac-bd5a-9407d3685445
+Meesho	Associate Compliance Manager	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/80ab7795-de6b-4dfe-9a66-a8ad5e7b8a83
+Meesho	Associate Director - Business Finance	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/b7f20190-5e8c-4cbc-901a-44a05bfec9be
+Meesho	Associate Director - Sort center Design & Operations – Sort Center Automation​	Senior / Lead (5+ yrs)	5+ yrs	Bangalore, Karnataka	Competitive (Market Standard)	69%	https://jobs.lever.co/meesho/b50e3cdc-439d-467c-8e4d-a87d339c4974
+Meesho	Architect - Android	Full-Time (General)	1-3 yrs (Standard)	Bangalore, Karnataka	Competitive (Market Standard)	68%	https://jobs.lever.co/meesho/040a5a75-28d2-4b56-904b-071c41d4ea90
+Cred	copywriter - kuvera	Full-Time (General)	1-3 yrs (Standard)	bengaluru	Competitive (Market Standard)	67%	https://jobs.lever.co/cred/24c4782a-e2d7-42a0-990d-e8ebd174ab57
+Cred	fund settlements	Full-Time (General)	1-3 yrs (Standard)	bengaluru	Competitive (Market Standard)	33%	https://jobs.lever.co/cred/7aba55a4-0457-47b7-bb49-9d9ecf514cc1

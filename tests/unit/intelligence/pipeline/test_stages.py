@@ -27,30 +27,22 @@ from intelligence.pipeline.stages import (
 
 
 class TestPipelineContracts:
-    """Verifies that Phase 1 stages are contracts only — no premature implementations."""
-
-    @pytest.mark.parametrize("StageClass", [s for s in INGESTION_PIPELINE if s not in (PersistenceStage, CompanyResolverStage, DeduplicatorStage, NormalizerStage, RankerStage)])
-    @pytest.mark.asyncio
-    async def test_stage_raises_not_implemented(self, StageClass):
-        stage = StageClass()
-        with pytest.raises(NotImplementedError):
-            await stage.process([])
+    """Verifies that pipeline stages adhere to architecture contracts."""
 
 
     def test_pipeline_order(self):
-        """Pipeline stage order is architecture — verify it matches the ADR."""
+        """Pipeline stage order matches v3.0 architecture (persistence before post-persistence event stages)."""
         expected_names = [
             "normalizer",
             "deduplicator",
             "company_resolver",
+            "persistence",
             "embedding_generator",
             "ranker",
-            "persistence",
         ]
         actual_names = [s.name for s in INGESTION_PIPELINE]
         assert actual_names == expected_names, (
-            f"Pipeline order changed! Expected {expected_names}, got {actual_names}. "
-            "Update ADR-006 if this change is intentional."
+            f"Pipeline order changed! Expected {expected_names}, got {actual_names}."
         )
 
     def test_all_stages_have_name(self):

@@ -27,10 +27,18 @@ if base_dir not in sys.path:
 from backend.src.core.di import DIContainer
 from backend.src.api.jobs import router as jobs_router, IN_MEMORY_JOBS
 from backend.src.api.companies import router as companies_router
-from backend.src.services.resume_service import ResumeService
+from backend.src.api.queue import router as queue_router
+from backend.src.api.applications import router as applications_router
+from backend.src.api.mark_applied_page import router as mark_applied_page_router
+from backend.src.api.telegram_webhook import router as telegram_router
+from backend.src.api.google_sheets import router as sheets_router
+from backend.src.api.dashboard import router as dashboard_router
+from backend.src.api.scans import router as scans_router
+from backend.src.api.profiles import router as profiles_router
+from backend.src.api.tailor import router as tailor_router
+from backend.src.services.resume_service import resume_service
 from backend.src.services.telegram_service import TelegramService
 
-resume_service = ResumeService()
 telegram_service = TelegramService()
 
 # Global In-Memory Applications, Recovery Center Items, and System Log Stream
@@ -140,6 +148,15 @@ app.add_middleware(
 # Mount API route endpoints
 app.include_router(jobs_router)
 app.include_router(companies_router)
+app.include_router(queue_router)
+app.include_router(applications_router)
+app.include_router(mark_applied_page_router)
+app.include_router(telegram_router)
+app.include_router(sheets_router)
+app.include_router(dashboard_router)
+app.include_router(scans_router)
+app.include_router(profiles_router)
+app.include_router(tailor_router)
 
 # Locate static directory
 static_dir = os.path.join(base_dir, "static")

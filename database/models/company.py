@@ -9,12 +9,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, JSON, DateTime, ARRAY, ForeignKey, Integer
-from database.models.base import Base
-
-try:
-    from pgvector.sqlalchemy import Vector
-except ImportError:
-    from sqlalchemy import ARRAY as Vector  # fallback for typing
+from database.models.base import Base, Vector
 
 
 class CompanyORM(Base):
@@ -54,7 +49,7 @@ class CompanyEmbeddingORM(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     company_id: Mapped[str] = mapped_column(String, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     model: Mapped[str] = mapped_column(String, nullable=False)
-    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     # Relationships

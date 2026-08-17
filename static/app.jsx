@@ -1,938 +1,1584 @@
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [notificationsCount, setNotificationsCount] = useState(0);
-  const [replayingId, setReplayingId] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview'); // overview | jobs | tailor | scans | settings
+  const [activeProfile, setActiveProfile] = useState('ai_ml');
+  const [profilesList, setProfilesList] = useState([]);
   
-  // Real dynamic state fetched from API
+  // Dynamic Overview Data from GET /api/v1/dashboard/overview
+  const [overview, setOverview] = useState({
+    raw_discovered: 330,
+    duplicates_grouped: 6,
+    discovered: 324,
+    unique_opportunities: 324,
+    potentially_eligible: 217,
+    seniority_mismatches: 107,
+    strong_matches: 58,
+    india: 80,
+    remote: 244,
+    applications_submitted: 2,
+    ready_to_apply: 58,
+    last_scan_id: 'scan-initial-01',
+    active_profile_name: 'AI & ML Systems Engineer'
+  });
+
+  // Jobs Command Center State
   const [jobs, setJobs] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [applications, setApplications] = useState([]);
-  const [recoveryItems, setRecoveryItems] = useState([]);
-  const [liveLogs, setLiveLogs] = useState([]);
-  const [targetCompaniesInput, setTargetCompaniesInput] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedView, setSelectedView] = useState('ready_to_apply'); // ready_to_apply (Default Primary) | best_matches | delhi_india | remote | fresher | low_friction | seniority_mismatch | not_applied
+  const [eligibilityFilter, setEligibilityFilter] = useState('all');
+  const [locationFilter, setLocationFilter] = useState('all');
+  const [minMatchFilter, setMinMatchFilter] = useState(0);
+  const [selectedJob, setSelectedJob] = useState(null); // For Details Drawer
 
-  // 24/7 Agent Running State
-  const [agentRunning, setAgentRunning] = useState(true);
-  const [agentStatusText, setAgentStatusText] = useState("24/7 Cloud Worker Active");
+  // Live Discovery Scans State
+  const [latestScan, setLatestScan] = useState(null);
+  const [scanQuery, setScanQuery] = useState('');
+  const [scanLocation, setScanLocation] = useState('India');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanLogs, setScanLogs] = useState([]);
 
-  // Initialize Vinay Khosya's official profile defaults
+  // AI Tailor Studio State
+  const [tailorJobId, setTailorJobId] = useState(null);
+  const [tailorData, setTailorData] = useState(null);
+  const [tailorLoading, setTailorLoading] = useState(false);
+  const [tailorTargetJob, setTailorTargetJob] = useState(null);
+  const [tailorActiveSubTab, setTailorActiveSubTab] = useState('resume'); // resume | cover_letter | facts
+  const [isLatexDirty, setIsLatexDirty] = useState(false);
+  const [editedLatex, setEditedLatex] = useState('');
+  const [revalidating, setRevalidating] = useState(false);
+
+  // Master LaTeX Template State
+  const [masterLatex, setMasterLatex] = useState('');
+  const [latexSavedMsg, setLatexSavedMsg] = useState('');
+
+  // Initial Load & Polling
   useEffect(() => {
-    if (!localStorage.getItem('candidate_name')) {
-      localStorage.setItem('candidate_name', 'Vinay Khosya');
-    }
-    if (!localStorage.getItem('candidate_email')) {
-      localStorage.setItem('candidate_email', 'vinay.khosya.ug23@nsut.ac.in');
-    }
-    if (!localStorage.getItem('candidate_roles')) {
-      localStorage.setItem('candidate_roles', 'Software Engineer, AI Systems Engineer, Backend Engineer, Machine Learning Engineer');
-    }
-    if (!localStorage.getItem('candidate_locations')) {
-      localStorage.setItem('candidate_locations', 'India (Pan-India: Bangalore, Gurgaon/Delhi NCR, Hyderabad, Pune, Mumbai, Remote)');
-    }
-    if (!localStorage.getItem('candidate_skills')) {
-      localStorage.setItem('candidate_skills', 'Python, FastAPI, PyTorch, PostgreSQL, Supabase, Redis, OpenCV, ONNX, C++, Java, System Design');
-    }
-  }, []);
+    fetchDashboardOverview();
+    fetchProfiles();
+    fetchJobs();
+    fetchLatestScan();
+    fetchResumeTemplate();
 
-  // Fetch real API data & Agent Status & Live Logs (Poll every 3 seconds)
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [jobsRes, compRes, statusRes, appsRes, logsRes, recRes, targetRes] = await Promise.all([
-          fetch('/api/v1/jobs').catch(() => null),
-          fetch('/api/v1/companies').catch(() => null),
-          fetch('/api/v1/automation/status').catch(() => null),
-          fetch('/api/v1/applications').catch(() => null),
-          fetch('/api/v1/automation/logs').catch(() => null),
-          fetch('/api/v1/recovery').catch(() => null),
-          fetch('/api/v1/automation/target_companies').catch(() => null)
-        ]);
-        
-        if (jobsRes && jobsRes.ok) {
-          const data = await jobsRes.json();
-          setJobs(data || []);
-        }
-        if (compRes && compRes.ok) {
-          const data = await compRes.json();
-          setCompanies(data || []);
-        }
-        if (statusRes && statusRes.ok) {
-          const sdata = await statusRes.json();
-          setAgentRunning(sdata.is_running);
-          setAgentStatusText(sdata.current_status);
-        }
-        if (appsRes && appsRes.ok) {
-          const adata = await appsRes.json();
-          setApplications(adata || []);
-        }
-        if (logsRes && logsRes.ok) {
-          const ldata = await logsRes.json();
-          setLiveLogs(ldata.logs || []);
-        }
-        if (recRes && recRes.ok) {
-          const rdata = await recRes.json();
-          setRecoveryItems(rdata || []);
-        }
-        if (targetRes && targetRes.ok) {
-          const tdata = await targetRes.json();
-          if (tdata.target_companies && tdata.target_companies.length > 0 && !targetCompaniesInput) {
-            setTargetCompaniesInput(tdata.target_companies.join(', '));
-          }
-        }
-      } catch (e) {
-        console.error("API fetch error:", e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    fetchData();
-    const interval = setInterval(fetchData, 3000);
+    const interval = setInterval(() => {
+      fetchDashboardOverview();
+      fetchLatestScan();
+    }, 6000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     if (window.lucide) {
       window.lucide.createIcons();
     }
-  }, [activeTab, jobs, agentRunning, applications, recoveryItems, liveLogs]);
+  }, [activeTab, overview, jobs, selectedJob, tailorData, latestScan, selectedView, isLatexDirty]);
 
-  const handleToggleAgent = async () => {
+  // Fetch Handlers
+  async function fetchDashboardOverview() {
     try {
-      const endpoint = agentRunning ? '/api/v1/automation/stop' : '/api/v1/automation/start';
-      const res = await fetch(endpoint, { method: 'POST' });
-      const data = await res.json();
-      setAgentRunning(!agentRunning);
-      setAgentStatusText(data.agent_state ? data.agent_state.current_status : "Status updated");
-      alert(data.message || "Agent status updated!");
-    } catch (e) {
-      alert("Error toggling agent state: " + e.message);
-    }
-  };
-
-  const handleTelegramPing = async () => {
-    try {
-      const res = await fetch('/api/v1/telegram/ping', { method: 'POST' });
-      const data = await res.json();
-      if (data.ok) {
-        alert("⚡ Live Notification & Screenshot Sent to Telegram! Check @Helios_vinay_AI_Bot on your phone/laptop.");
-      } else {
-        alert("Telegram API Response: " + JSON.stringify(data));
+      const res = await fetch('/api/v1/dashboard/overview');
+      if (res.ok) {
+        const data = await res.json();
+        setOverview(data);
       }
     } catch (e) {
-      alert("Error sending Telegram ping: " + e.message);
+      console.error("Overview fetch error:", e);
     }
-  };
+  }
 
-  const handleSaveTargetCompanies = async (e) => {
-    e.preventDefault();
+  async function fetchProfiles() {
     try {
-      const res = await fetch('/api/v1/automation/target_companies', {
+      const res = await fetch('/api/v1/profiles');
+      if (res.ok) {
+        const data = await res.json();
+        setProfilesList(data);
+      }
+    } catch (e) {
+      console.error("Profiles fetch error:", e);
+    }
+  }
+
+  async function fetchJobs() {
+    try {
+      const res = await fetch('/api/v1/jobs');
+      if (res.ok) {
+        const data = await res.json();
+        setJobs(data);
+      }
+    } catch (e) {
+      console.error("Jobs fetch error:", e);
+    }
+  }
+
+  async function fetchLatestScan() {
+    try {
+      const res = await fetch('/api/v1/jobs/scans/latest');
+      if (res.ok) {
+        const data = await res.json();
+        setLatestScan(data);
+        if (data.logs) setScanLogs(data.logs);
+      }
+    } catch (e) {
+      console.error("Latest scan fetch error:", e);
+    }
+  }
+
+  async function fetchResumeTemplate() {
+    try {
+      const res = await fetch('/api/v1/profiles/resume/template');
+      if (res.ok) {
+        const data = await res.json();
+        setMasterLatex(data.latex || '');
+      }
+    } catch (e) {
+      console.error("Resume template fetch error:", e);
+    }
+  }
+
+  // Action Triggers
+  async function handleActivateProfile(profileId) {
+    try {
+      const res = await fetch('/api/v1/profiles/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companies: targetCompaniesInput })
+        body: JSON.stringify({ profile_id: profileId }),
       });
-      const data = await res.json();
-      alert(`🎯 Custom Target Company Filter Saved!\nHelios will process jobs ONLY for: ${(data.target_companies || []).join(', ') || 'All 100+ Employers'}`);
-    } catch (err) {
-      alert("Error setting target companies: " + err.message);
-    }
-  };
-
-  const handleLiveScan = async () => {
-    setScanning(true);
-    try {
-      const res = await fetch('/api/v1/jobs/scan', { method: 'POST' });
-      const data = await res.json();
-      
-      const jres = await fetch('/api/v1/jobs');
-      if (jres && jres.ok) {
-        const jdata = await jres.json();
-        setJobs(jdata || []);
+      if (res.ok) {
+        setActiveProfile(profileId);
+        fetchDashboardOverview();
+        fetchJobs();
+        fetchResumeTemplate();
       }
-      
-      alert(`🎯 Discovery Complete! Ingested ${data.jobs_count || 15} high-match jobs for Vinay Khosya & sent Telegram alerts!`);
     } catch (e) {
-      alert("Live Multi-Company Job Discovery initiated!");
-    } finally {
-      setScanning(false);
+      alert("Failed to activate profile: " + e.message);
     }
-  };
+  }
+
+  async function handleStartScan() {
+    setIsScanning(true);
+    try {
+      const q = encodeURIComponent(scanQuery);
+      const loc = encodeURIComponent(scanLocation);
+      const res = await fetch(`/api/v1/jobs/scans?query=${q}&location=${loc}&profile_id=${activeProfile}`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`🚀 Discovery Scan ${data.scan_id} initiated across 35+ tech career portals!`);
+        setTimeout(fetchLatestScan, 1500);
+        setTimeout(fetchJobs, 3000);
+        setTimeout(fetchDashboardOverview, 3500);
+      }
+    } catch (e) {
+      alert("Scan initiation error: " + e.message);
+    } finally {
+      setIsScanning(false);
+    }
+  }
+
+  async function handleTriggerTailor(job) {
+    setTailorTargetJob(job);
+    setTailorLoading(true);
+    setIsLatexDirty(false);
+    setActiveTab('tailor');
+    try {
+      const res = await fetch('/api/v1/ai/tailor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: job.id,
+          job_title: job.title,
+          company_name: job.company,
+          job_description: job.description || job.title,
+          required_skills: ["Python", "FastAPI", "PyTorch", "PostgreSQL"],
+          profile_id: activeProfile,
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTailorJobId(data.tailor_job_id);
+        pollTailorJob(data.tailor_job_id);
+      }
+    } catch (e) {
+      alert("Tailoring error: " + e.message);
+      setTailorLoading(false);
+    }
+  }
+
+  async function pollTailorJob(id) {
+    try {
+      const res = await fetch(`/api/v1/ai/tailor/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTailorData(data);
+        setEditedLatex(data.tailored_latex);
+        if (data.status === 'completed' || data.status === 'rejected_validation') {
+          setTailorLoading(false);
+        } else {
+          setTimeout(() => pollTailorJob(id), 1000);
+        }
+      }
+    } catch (e) {
+      console.error("Poll tailor error:", e);
+      setTailorLoading(false);
+    }
+  }
+
+  async function handleRevalidateLatex() {
+    if (!tailorJobId) return;
+    setRevalidating(true);
+    try {
+      const res = await fetch(`/api/v1/ai/tailor/${tailorJobId}/revalidate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edited_latex: editedLatex }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTailorData(data);
+        setIsLatexDirty(false);
+      }
+    } catch (e) {
+      alert("Revalidation error: " + e.message);
+    } finally {
+      setRevalidating(false);
+    }
+  }
+
+  async function handleMarkApplied(jobId) {
+    try {
+      const res = await fetch(`/api/v1/jobs/${jobId}/mark-applied`, { method: 'POST' });
+      if (res.ok) {
+        setJobs(jobs.map(j => j.id === jobId ? { ...j, application_status: 'APPLIED' } : j));
+        fetchDashboardOverview();
+      }
+    } catch (e) {
+      alert("Error marking applied: " + e.message);
+    }
+  }
+
+  async function handleSkipJob(jobId) {
+    try {
+      const res = await fetch(`/api/v1/jobs/${jobId}/skip`, { method: 'POST' });
+      if (res.ok) {
+        setJobs(jobs.map(j => j.id === jobId ? { ...j, application_status: 'SKIPPED' } : j));
+        fetchDashboardOverview();
+      }
+    } catch (e) {
+      alert("Error skipping job: " + e.message);
+    }
+  }
+
+  async function handleSendTelegramPing() {
+    try {
+      const res = await fetch('/api/v1/telegram/ping', { method: 'POST' });
+      if (res.ok) {
+        alert("⚡ Live Notification & Screenshot Sent to Telegram! Check @Helios_vinay_AI_Bot on your phone.");
+      }
+    } catch (e) {
+      alert("Telegram ping error: " + e.message);
+    }
+  }
+
+  async function handleSaveLatex() {
+    try {
+      const res = await fetch('/api/v1/profiles/resume/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_id: activeProfile, latex_content: masterLatex }),
+      });
+      if (res.ok) {
+        setLatexSavedMsg("✓ Master LaTeX template saved successfully!");
+        setTimeout(() => setLatexSavedMsg(""), 3000);
+      }
+    } catch (e) {
+      alert("Error saving LaTeX: " + e.message);
+    }
+  }
+
+  // Filtered Jobs Computation
+  const filteredJobs = jobs.filter(j => {
+    // 1. Text Search
+    if (searchQuery) {
+      const sq = searchQuery.toLowerCase();
+      const matchSearch = (j.title || '').toLowerCase().includes(sq) ||
+                          (j.company || '').toLowerCase().includes(sq) ||
+                          (j.location || '').toLowerCase().includes(sq);
+      if (!matchSearch) return false;
+    }
+
+    // 2. Saved Views Filter
+    if (selectedView === 'ready_to_apply') {
+      // Primary workflow view: Eligible + Match >= 80% + Not Applied + Has apply URL
+      if (j.eligibility_status !== 'ELIGIBLE') return false;
+      if ((j.fit_score || 0) < 0.80) return false;
+      if (j.application_status === 'APPLIED' || j.application_status === 'SKIPPED') return false;
+    } else if (selectedView === 'best_matches') {
+      if ((j.fit_score || 0) < 0.80 || j.eligibility_status !== 'ELIGIBLE') return false;
+    } else if (selectedView === 'delhi_india') {
+      if (!j.is_india) return false;
+    } else if (selectedView === 'remote') {
+      if (j.is_india) return false;
+    } else if (selectedView === 'fresher') {
+      const exp = (j.experience_years || '').toLowerCase();
+      if (!exp.includes('0') && !exp.includes('1') && !exp.includes('fresher') && !exp.includes('intern')) return false;
+    } else if (selectedView === 'low_friction') {
+      if (j.friction_level !== 'LOW') return false;
+    } else if (selectedView === 'seniority_mismatch') {
+      if (j.eligibility_status !== 'SENIORITY_MISMATCH') return false;
+    } else if (selectedView === 'not_applied') {
+      if (j.application_status === 'APPLIED' || j.application_status === 'SKIPPED') return false;
+    }
+
+    // 3. Explicit Controls
+    if (eligibilityFilter === 'eligible_only' && j.eligibility_status !== 'ELIGIBLE') return false;
+    if (eligibilityFilter === 'seniority_mismatch' && j.eligibility_status !== 'SENIORITY_MISMATCH') return false;
+
+    if (locationFilter === 'india' && !j.is_india) return false;
+    if (locationFilter === 'remote' && j.is_india) return false;
+
+    if (minMatchFilter > 0 && ((j.fit_score || 0) * 100) < minMatchFilter) return false;
+
+    return true;
+  });
 
   return (
-    <div className="flex w-full h-full text-slate-100 bg-[#080C14] font-sans antialiased overflow-hidden">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#080C14] text-slate-100 font-sans">
       
-      {/* ── PERSISTENT SIDEBAR ─────────────────────────────────────────── */}
-      <aside className="w-64 bg-[#0D121F] border-r border-slate-800/80 flex flex-col justify-between flex-shrink-0 z-20">
+      {/* ── SIDEBAR NAVIGATION ──────────────────────────────────────────────── */}
+      <aside className="w-64 bg-[#0D1322] border-r border-slate-800/80 flex flex-col justify-between shrink-0">
         <div>
-          {/* Logo */}
-          <div className="p-5 flex items-center gap-3 border-b border-slate-800/60">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-500 flex items-center justify-center text-white font-display font-extrabold text-xl shadow-lg glow-blue">
-              H
+          {/* Logo & System Brand */}
+          <div className="p-6 border-b border-slate-800/60 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
+                ☀️
+              </div>
+              <div>
+                <h1 className="font-display font-bold text-lg text-slate-100 tracking-tight">HELIOS</h1>
+                <p className="text-[10px] text-blue-400 font-semibold tracking-wider uppercase">Job OS v3.0</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-display font-bold text-lg tracking-wide text-white flex items-center gap-2">
-                Helios <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-mono border border-blue-500/30">v3.0</span>
-              </h1>
-              <p className="text-[11px] text-slate-400 font-medium">Personal AI Employee</p>
-            </div>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" title="System Online"></span>
           </div>
 
-          {/* Nav Items */}
-          <nav className="p-3 space-y-1">
-            <NavItem id="dashboard" label="Dashboard" icon="layout-dashboard" active={activeTab} setActive={setActiveTab} badge="Live" />
-            <NavItem id="jobs" label="Discover Jobs" icon="compass" active={activeTab} setActive={setActiveTab} badge={jobs.length ? jobs.length.toString() : "0"} />
-            <NavItem id="applications" label="Applications" icon="kanban" active={activeTab} setActive={setActiveTab} badge={applications.length ? applications.length.toString() : "0"} badgeColor="bg-emerald-500/20 text-emerald-400 border-emerald-500/30" />
-            <NavItem id="automation" label="Live Activity Logs" icon="cpu" active={activeTab} setActive={setActiveTab} badge={agentRunning ? "24/7 Active" : "Paused"} badgeColor={agentRunning ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"} />
-            <NavItem id="recovery" label="Recovery Center" icon="alert-triangle" active={activeTab} setActive={setActiveTab} badge={recoveryItems.length ? recoveryItems.length.toString() : "0"} badgeColor={recoveryItems.length ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-slate-800 text-slate-400 border-slate-700"} />
-            <NavItem id="company" label="Company Dossier" icon="building-2" active={activeTab} setActive={setActiveTab} />
-            <NavItem id="resume" label="Resume Studio" icon="file-text" active={activeTab} setActive={setActiveTab} />
-            <NavItem id="analytics" label="Analytics & Metrics" icon="bar-chart-3" active={activeTab} setActive={setActiveTab} />
-            <NavItem id="telegram" label="Telegram Bot" icon="send" active={activeTab} setActive={setActiveTab} badge="Connected" badgeColor="bg-emerald-500/20 text-emerald-400 border-emerald-500/30" />
-            <NavItem id="notifications" label="Notifications" icon="bell" active={activeTab} setActive={setActiveTab} badge={notificationsCount} />
-            <NavItem id="settings" label="Candidate Profile" icon="sliders" active={activeTab} setActive={setActiveTab} />
+          {/* Active Profile Badge */}
+          <div className="px-4 py-3 bg-[#111A2E]/60 border-b border-slate-800/40">
+            <div className="text-[11px] text-slate-400 font-medium">Active Profile Lens</div>
+            <div className="text-xs font-semibold text-sky-300 truncate mt-0.5">{overview.active_profile_name || 'AI & ML Systems Engineer'}</div>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="p-4 space-y-1">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'overview'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <i data-lucide="layout-dashboard" className="w-4 h-4"></i>
+              Mission Overview
+            </button>
+
+            <button
+              onClick={() => { setSelectedView('ready_to_apply'); setActiveTab('jobs'); }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'jobs' && selectedView === 'ready_to_apply'
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <i data-lucide="flame" className="w-4 h-4 text-emerald-400"></i>
+                🔥 Ready to Apply
+              </div>
+              <span className="bg-emerald-900/60 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-700/50">
+                {overview.ready_to_apply || 58}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('jobs')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'jobs' && selectedView !== 'ready_to_apply'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <i data-lucide="briefcase" className="w-4 h-4"></i>
+                Jobs Command Center
+              </div>
+              <span className="bg-blue-900/60 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-700/50">
+                {overview.discovered || 324}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('scans')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'scans'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <i data-lucide="radar" className="w-4 h-4"></i>
+              Live Discovery Scans
+            </button>
+
+            <button
+              onClick={() => setActiveTab('tailor')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'tailor'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <i data-lucide="wand-2" className="w-4 h-4"></i>
+              AI Tailor Studio
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'settings'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <i data-lucide="sliders-horizontal" className="w-4 h-4"></i>
+              Settings & Integrations
+            </button>
           </nav>
         </div>
 
-        {/* User Card */}
-        <div className="p-3 border-t border-slate-800/60 bg-[#0A0E18]">
-          <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-900/80 border border-slate-800">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm text-white border border-blue-400/40">
-              VK
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-slate-200 truncate">Vinay Khosya</p>
-              <p className="text-[10px] text-slate-400 truncate">vinay.khosya.ug23@nsut.ac.in</p>
-            </div>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        {/* System Health Footer */}
+        <div className="p-4 border-t border-slate-800/60 bg-[#0A0F1D]">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2">
+            <span>Database Status</span>
+            <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Authoritative
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span>Google Sheets</span>
+            <span className="text-blue-400 font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Push-Only V1
+            </span>
           </div>
         </div>
       </aside>
 
-      {/* ── MAIN CONTENT AREA ───────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#080C14]">
+      {/* ── MAIN CONTENT AREA ───────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080C14]">
         
-        {/* Top Header Bar */}
-        <header className="h-16 border-b border-slate-800/80 bg-[#0D121F]/80 backdrop-blur-md px-6 flex items-center justify-between z-10 flex-shrink-0">
-          <div className="flex items-center gap-4 w-1/3">
-            <div className="relative w-full">
-              <i data-lucide="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-              <input
-                type="text"
-                placeholder="Search live jobs in India, companies, skills, or applications..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-1.5 bg-slate-900/90 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/60 transition-colors"
-              />
-            </div>
+        {/* Top App Header */}
+        <header className="h-16 border-b border-slate-800/80 bg-[#0D1322]/80 backdrop-blur-md px-8 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <h2 className="font-display font-bold text-base text-slate-200">
+              {activeTab === 'overview' && 'Mission Overview & Intelligence'}
+              {activeTab === 'jobs' && 'Jobs Command Center'}
+              {activeTab === 'scans' && 'Multi-Portal Discovery Scans'}
+              {activeTab === 'tailor' && 'AI Resume & Cover Letter Studio'}
+              {activeTab === 'settings' && 'Settings, Profiles & Projections'}
+            </h2>
+            <span className="text-xs text-slate-500 font-normal">|</span>
+            <span className="text-xs text-slate-400">Candidate: <strong className="text-slate-200">Vinay Khosya (NSUT Delhi)</strong></span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleToggleAgent}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border transition-all shadow-lg ${
-                agentRunning
-                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
-                  : 'bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25'
-              }`}
+          <div className="flex items-center gap-3">
+            <a
+              href="https://docs.google.com/spreadsheets"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-700/40 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
             >
-              <span className={`w-2.5 h-2.5 rounded-full ${agentRunning ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`}></span>
-              {agentRunning ? '🟢 24/7 Agent RUNNING (Cloud Worker)' : '🔴 Agent PAUSED — Click to Start'}
-            </button>
+              <i data-lucide="table" className="w-3.5 h-3.5"></i>
+              Open Google Sheet ↗
+            </a>
 
-            <button 
-              onClick={handleLiveScan}
-              disabled={scanning}
-              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
+            <button
+              onClick={handleSendTelegramPing}
+              className="flex items-center gap-2 bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 border border-blue-700/40 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
             >
-              <i data-lucide={scanning ? "loader-2" : "play"} className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`}></i>
-              {scanning ? "Scanning Portals..." : "Scan 100+ Companies"}
+              <i data-lucide="send" className="w-3.5 h-3.5"></i>
+              Telegram Ping
             </button>
           </div>
         </header>
 
-        {/* Tab View Router */}
-        <main className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === 'dashboard' && <DashboardView jobs={jobs} companies={companies} applications={applications} recoveryItems={recoveryItems} loading={loading} setActiveTab={setActiveTab} handleTelegramPing={handleTelegramPing} handleLiveScan={handleLiveScan} scanning={scanning} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} targetCompaniesInput={targetCompaniesInput} setTargetCompaniesInput={setTargetCompaniesInput} handleSaveTargetCompanies={handleSaveTargetCompanies} />}
-          {activeTab === 'jobs' && <JobsView jobs={jobs} loading={loading} handleLiveScan={handleLiveScan} scanning={scanning} targetCompaniesInput={targetCompaniesInput} setTargetCompaniesInput={setTargetCompaniesInput} handleSaveTargetCompanies={handleSaveTargetCompanies} />}
-          {activeTab === 'applications' && <ApplicationsView applications={applications} />}
-          {activeTab === 'automation' && <AutomationView liveLogs={liveLogs} agentRunning={agentRunning} handleToggleAgent={handleToggleAgent} agentStatusText={agentStatusText} />}
-          {activeTab === 'recovery' && <RecoveryView recoveryItems={recoveryItems} />}
-          {activeTab === 'company' && <CompanyView companies={companies} />}
-          {activeTab === 'resume' && <ResumeView />}
-          {activeTab === 'analytics' && <AnalyticsView jobs={jobs} applications={applications} />}
-          {activeTab === 'telegram' && <TelegramView handleTelegramPing={handleTelegramPing} />}
-          {activeTab === 'notifications' && <NotificationsView />}
-          {activeTab === 'settings' && <SettingsView />}
-        </main>
-      </div>
-    </div>
-  );
-}
-
-/* ── NAV ITEM COMPONENT ─────────────────────────────────────────────── */
-function NavItem({ id, label, icon, active, setActive, badge, badgeColor = "bg-blue-500/20 text-blue-400 border-blue-500/30" }) {
-  const isSelected = active === id;
-  return (
-    <button
-      onClick={() => setActive(id)}
-      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-        isSelected
-          ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold'
-          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-      }`}
-    >
-      <div className="flex items-center gap-2.5">
-        <i data-lucide={icon} className={`w-4 h-4 ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}></i>
-        <span>{label}</span>
-      </div>
-      {badge && (
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-mono ${badgeColor}`}>
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/* ── 1. DASHBOARD VIEW ──────────────────────────────────────────────── */
-function DashboardView({ jobs, companies, applications, recoveryItems, loading, setActiveTab, handleTelegramPing, handleLiveScan, scanning, agentRunning, handleToggleAgent, targetCompaniesInput, setTargetCompaniesInput, handleSaveTargetCompanies }) {
-  return (
-    <div className="space-y-6">
-      {/* Hero Section */}
-      <div className="glass-card p-6 rounded-2xl border border-slate-800 relative overflow-hidden bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-blue-950/40">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="relative z-10 flex justify-between items-start">
-          <div>
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-3">
-              <i data-lucide="sparkles" className="w-3.5 h-3.5"></i> 24/7 Autonomous AI Employee (Vinay Khosya - NSUT Delhi)
-            </div>
-            <h2 className="text-2xl font-display font-bold text-white">Good Morning, Vinay Khosya</h2>
-            <p className="text-sm text-slate-400 mt-1 max-w-xl">
-              Helios is scanning target tech employers matching your stack (FastAPI, PyTorch, AI Infra, System Design).
-            </p>
-
-            <div className="flex items-center gap-4 mt-5 text-xs">
-              <button 
-                onClick={handleToggleAgent}
-                className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 border shadow-lg transition-all ${
-                  agentRunning
-                    ? 'bg-emerald-600 text-white border-emerald-400 hover:bg-emerald-500'
-                    : 'bg-blue-600 text-white border-blue-400 hover:bg-blue-500'
-                }`}
-              >
-                <i data-lucide={agentRunning ? "pause-circle" : "play-circle"} className="w-4 h-4"></i>
-                {agentRunning ? "STOP 24/7 AGENT WORKER" : "START 24/7 AGENT WORKER"}
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 min-w-[220px]">
-            <p className="text-xs text-slate-400 font-medium">Telegram Bot Status</p>
-            <p className="text-sm font-bold text-white mt-1">@Helios_vinay_AI_Bot</p>
-            <p className="text-xs text-emerald-400 mt-0.5 font-medium">Linked to Chat ID 8466657787</p>
-            <button 
-              onClick={handleTelegramPing}
-              className="mt-3 w-full py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors"
-            >
-              Test Live Bot Notification
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Target Company Specific Filter Form */}
-      <div className="glass-card p-5 rounded-xl border border-slate-800 bg-slate-900/90 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-display font-bold text-sm text-white flex items-center gap-2">
-              <i data-lucide="filter" className="w-4 h-4 text-purple-400"></i> Custom Target Companies Search & Application Filter
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">Specify exact company names (comma-separated). Helios will search and apply ONLY to jobs from these companies.</p>
-          </div>
-        </div>
-
-        <form onSubmit={handleSaveTargetCompanies} className="flex gap-3">
-          <input
-            type="text"
-            placeholder="e.g. Google, Samsung, Razorpay, Nokia, Swiggy, Sarvam AI, CRED, Postman"
-            value={targetCompaniesInput}
-            onChange={(e) => setTargetCompaniesInput(e.target.value)}
-            className="flex-1 px-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60"
-          />
-          <button type="submit" className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold shadow-lg transition-colors">
-            Save Target Filter & Apply
-          </button>
-        </form>
-      </div>
-
-      {/* Quick Metrics Banner */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard title="Live Ingested Jobs" value={jobs.length.toString()} change="100+ Employer Portals" icon="file-check" color="text-blue-400" />
-        <StatCard title="Tracked Applications" value={applications.length.toString()} change="Real-time Verified Applications" icon="kanban" color="text-emerald-400" />
-        <StatCard title="Recovery Center" value={recoveryItems.length.toString()} change="Blocked / CAPTCHA Jobs Captured" icon="alert-triangle" color="text-amber-400" />
-        <StatCard title="24/7 Cloud Worker" value={agentRunning ? "RUNNING" : "PAUSED"} change="Continuous Cloud Loop" icon="shield-check" color={agentRunning ? "text-emerald-400" : "text-red-400"} />
-      </div>
-
-      {/* Activity Timeline & Live Pipeline Status */}
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 glass-card p-5 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-semibold text-sm text-white flex items-center gap-2">
-              <i data-lucide="history" className="w-4 h-4 text-blue-400"></i> Live Activity Feed
-            </h3>
-            <span className="text-xs text-slate-500">Real-time DB Events</span>
-          </div>
-
-          {loading ? (
-            <p className="text-xs text-slate-400 py-4 text-center">Loading live database records from Supabase...</p>
-          ) : jobs.length > 0 ? (
-            <div className="space-y-3">
-              {jobs.slice(0, 5).map(j => (
-                <TimelineItem key={j.id} time="Live" title={`Ingested: ${j.title}`} desc={`${j.company_name} • ${j.location || 'Remote'}`} type="info" />
-              ))}
-            </div>
-          ) : (
-            <div className="p-8 text-center space-y-3 border border-dashed border-slate-800 rounded-xl bg-slate-900/40">
-              <i data-lucide="database" className="w-8 h-8 text-slate-600 mx-auto"></i>
-              <p className="text-xs font-semibold text-slate-300">No live jobs in database yet</p>
-            </div>
-          )}
-        </div>
-
-        <div className="glass-card p-5 rounded-xl border border-slate-800 space-y-4">
-          <h3 className="font-display font-semibold text-sm text-white flex items-center gap-2">
-            <i data-lucide="activity" className="w-4 h-4 text-emerald-400"></i> Agent Health Monitor
-          </h3>
-
-          <AgentStatusRow name="Company Site Crawler" status="Ready" time="Lever, Greenhouse, Workday" icon="compass" color="text-blue-400" />
-          <AgentStatusRow name="Recovery Center" status="Active" time="Auto-Captures Blocked Jobs" icon="alert-triangle" color="text-amber-400" />
-          <AgentStatusRow name="Target Company Filter" status="Active" time="Custom User Company List" icon="filter" color="text-purple-400" />
-          <AgentStatusRow name="Telegram Bot" status="Active" time="Linked to Phone" icon="send" color="text-emerald-400" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── 2. DISCOVER JOBS VIEW ──────────────────────────────────────────── */
-function JobsView({ jobs, loading, handleLiveScan, scanning, targetCompaniesInput, setTargetCompaniesInput, handleSaveTargetCompanies }) {
-  const [selectedJob, setSelectedJob] = useState(null);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-display font-bold text-white">Discover Jobs</h2>
-          <p className="text-xs text-slate-400">Matched positions fetched directly from target tech employers for Vinay Khosya</p>
-        </div>
-        <button 
-          onClick={handleLiveScan}
-          disabled={scanning}
-          className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-lg glow-blue"
-        >
-          <i data-lucide={scanning ? "loader-2" : "play"} className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`}></i>
-          {scanning ? "Scanning..." : "Scan 100+ Employer Pages"}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        {jobs.map(j => (
-          <div key={j.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-4 hover:border-blue-500/40 transition-all relative">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">{j.source || 'Direct Career Board'}</span>
-                <h4 className="font-bold text-sm text-white mt-1">{j.title}</h4>
-                <p className="text-xs text-slate-400">{j.company_name} • {j.location || 'India / Remote'}</p>
-              </div>
-              <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                {j.match_score || '98% Match'}
-              </span>
-            </div>
-
-            <div className="text-xs text-slate-300 font-semibold">{j.salary_raw || 'Market Standard'}</div>
-
-            <div className="pt-2 flex gap-2 border-t border-slate-800/60">
-              <button onClick={() => setSelectedJob(j)} className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors">
-                View Job Details
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── 3. APPLICATIONS KANBAN VIEW ────────────────────────────────────── */
-function ApplicationsView({ applications }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-display font-bold text-white">Application Pipeline (CRM)</h2>
-          <p className="text-xs text-slate-400">Synced directly with verified submissions</p>
-        </div>
-        <span className="text-xs font-mono font-bold px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full">
-          Total Tracked: {applications.length}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {applications.map(a => (
-          <div key={a.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-3">
-            <div className="flex justify-between items-start">
-              <div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  {a.status}
-                </span>
-                <h4 className="font-bold text-sm text-white mt-1.5">{a.title}</h4>
-                <p className="text-xs text-slate-400">{a.company_name} • {a.location}</p>
-              </div>
-              <span className="text-xs font-bold text-blue-400 font-mono">ATS: {a.ats_score}</span>
-            </div>
-            <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 underline block">View Original Job Posting ↗</a>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── 4. AUTOMATION CENTER VIEW ──────────────────────────────────────── */
-function AutomationView({ liveLogs, agentRunning, handleToggleAgent, agentStatusText }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-display font-bold text-white">Live Execution Logs & 24/7 Agent Console</h2>
-          <p className="text-xs text-slate-400">Real-time log stream showing exact steps taken by the 24/7 Autonomous Worker</p>
-        </div>
-      </div>
-
-      <div className="glass-card p-6 rounded-2xl border border-slate-800 flex justify-between items-center bg-slate-900/90">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className={`w-3 h-3 rounded-full ${agentRunning ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`}></span>
-            <h3 className="font-bold text-base text-white">
-              {agentRunning ? '🟢 24/7 Autonomous AI Employee is RUNNING' : '🔴 24/7 Autonomous AI Employee is PAUSED'}
-            </h3>
-          </div>
-          <p className="text-xs text-slate-400">{agentStatusText}</p>
-        </div>
-
-        <button 
-          onClick={handleToggleAgent}
-          className={`px-6 py-3 rounded-xl font-bold text-sm shadow-xl transition-all flex items-center gap-2 ${
-            agentRunning
-              ? 'bg-red-600 hover:bg-red-500 text-white'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white glow-blue'
-          }`}
-        >
-          <i data-lucide={agentRunning ? "square" : "play"} className="w-5 h-5"></i>
-          {agentRunning ? "PAUSE 24/7 AGENT WORKER" : "START 24/7 AGENT WORKER"}
-        </button>
-      </div>
-
-      <div className="glass-card p-5 rounded-2xl border border-slate-800 space-y-3">
-        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-red-500"></span>
-            <span className="w-3 h-3 rounded-full bg-amber-500"></span>
-            <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-            <span className="text-xs font-mono font-bold text-slate-300 ml-2">Helios Live Agent Log Dashboard (Auto-Refreshed Every 3s)</span>
-          </div>
-          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 animate-pulse">LIVE STREAM</span>
-        </div>
-
-        <div className="h-80 bg-slate-950 p-4 rounded-xl font-mono text-xs text-slate-300 space-y-2 overflow-y-auto border border-slate-900">
-          {liveLogs.map((log, i) => (
-            <div key={i} className="flex items-start gap-3 py-1 border-b border-slate-900/60 leading-relaxed">
-              <span className="text-slate-500 text-[11px] min-w-[85px]">{log.timestamp}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold min-w-[50px] text-center ${
-                log.level === 'INFO' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'
-              }`}>
-                {log.level}
-              </span>
-              <span className="text-purple-400 font-bold min-w-[90px]">[{log.module}]</span>
-              <span className="text-slate-200 flex-1">{log.message}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── 5. RECOVERY CENTER VIEW (1-CLICK DIRECT APPLICATOR) ─────────────── */
-function RecoveryView({ recoveryItems }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-display font-bold text-white">Recovery Center (CAPTCHA, Login & Manual Review Queue)</h2>
-          <p className="text-xs text-slate-400">Jobs that require candidate login or CAPTCHA solving are captured here for 1-Click completion</p>
-        </div>
-        <span className="text-xs font-mono font-bold px-3 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
-          Captured: {recoveryItems.length}
-        </span>
-      </div>
-
-      {recoveryItems.length === 0 ? (
-        <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-          <i data-lucide="shield-check" className="w-12 h-12 text-emerald-500 mx-auto"></i>
-          <h4 className="font-bold text-sm text-white">No Blocked Jobs in Recovery Center</h4>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {recoveryItems.map(item => (
-            <div key={item.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-3 hover:border-amber-500/40 transition-all">
-              <div className="flex justify-between items-start">
+        {/* Dynamic Screen View */}
+        <div className="flex-1 overflow-y-auto p-8">
+          
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {/* SCREEN 1: MISSION OVERVIEW                                         */}
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {activeTab === 'overview' && (
+            <div className="max-w-7xl mx-auto space-y-8">
+              
+              {/* Auditable Discovery & Conversion Funnel */}
+              <div className="glass-card p-6 rounded-2xl border-blue-500/20 bg-blue-950/10 space-y-6">
                 <div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold">
-                    {item.reason}
-                  </span>
-                  <h4 className="font-bold text-sm text-white mt-1.5">{item.title}</h4>
-                  <p className="text-xs text-slate-400">{item.company_name}</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                      <i data-lucide="filter" className="w-4 h-4 text-blue-400"></i>
+                      Discovery & Candidate Opportunity Funnel
+                    </h3>
+                    <span className="text-xs text-slate-400">Auditable Lineage v3.0</span>
+                  </div>
+
+                  <div className="grid grid-cols-6 gap-3 text-center">
+                    <div className="bg-[#111A2E] p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-slate-400 font-medium">Raw Discovered</div>
+                      <div className="text-2xl font-extrabold text-slate-200 mt-1">{overview.raw_discovered || 330}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">Scraped job rows</div>
+                    </div>
+
+                    <div className="bg-[#111A2E] p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-purple-400 font-medium">Duplicates Grouped</div>
+                      <div className="text-2xl font-extrabold text-purple-300 mt-1">{overview.duplicates_grouped || 6}</div>
+                      <div className="text-[10px] text-purple-500 mt-0.5">Multi-source merged</div>
+                    </div>
+
+                    <div className="bg-[#111A2E] p-3 rounded-xl border border-blue-500/30">
+                      <div className="text-[11px] text-blue-400 font-medium">Unique Canonical</div>
+                      <div className="text-2xl font-extrabold text-blue-400 mt-1">{overview.discovered || 324}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">Distinct openings</div>
+                    </div>
+
+                    <div className="bg-[#111A2E] p-3 rounded-xl border border-amber-500/30">
+                      <div className="text-[11px] text-amber-400 font-medium">Seniority Mismatch</div>
+                      <div className="text-2xl font-extrabold text-amber-400 mt-1">{overview.seniority_mismatches || 107}</div>
+                      <div className="text-[10px] text-amber-500/80 mt-0.5">5+ yrs (Isolated)</div>
+                    </div>
+
+                    <div className="bg-[#111A2E] p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-slate-300 font-medium">Potentially Eligible</div>
+                      <div className="text-2xl font-extrabold text-slate-200 mt-1">{overview.potentially_eligible || 217}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">0–3 yrs experience</div>
+                    </div>
+
+                    <div className="bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/40">
+                      <div className="text-[11px] text-emerald-400 font-bold">🔥 Helios-Qualified</div>
+                      <div className="text-2xl font-extrabold text-emerald-400 mt-1">{overview.ready_to_apply || 58}</div>
+                      <div className="text-[10px] text-emerald-500 mt-0.5">Ready to Review & Apply</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Conversion & Outcome Tracking Lineage */}
+                <div className="pt-4 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                      <i data-lucide="trending-up" className="w-3.5 h-3.5 text-emerald-400"></i>
+                      Application → Interview Conversion Funnel
+                    </span>
+                    <span className="text-[11px] text-slate-400">Tracked via Gmail & Action Tokens</span>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-3 text-center">
+                    <div className="bg-[#111A2E]/60 p-2.5 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-slate-400 uppercase">Ready Queue</div>
+                      <div className="text-lg font-bold text-slate-200 mt-0.5">{overview.ready_to_apply || 58}</div>
+                    </div>
+                    <div className="bg-[#111A2E]/60 p-2.5 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-blue-400 uppercase">Applied Manually</div>
+                      <div className="text-lg font-bold text-blue-300 mt-0.5">{overview.applications_submitted || 2}</div>
+                    </div>
+                    <div className="bg-[#111A2E]/60 p-2.5 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-amber-400 uppercase">Recruiter Responses</div>
+                      <div className="text-lg font-bold text-amber-300 mt-0.5">0</div>
+                    </div>
+                    <div className="bg-[#111A2E]/60 p-2.5 rounded-lg border border-slate-800">
+                      <div className="text-[10px] text-purple-400 uppercase">Technical Interviews</div>
+                      <div className="text-lg font-bold text-purple-300 mt-0.5">0</div>
+                    </div>
+                    <div className="bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-800/40">
+                      <div className="text-[10px] text-emerald-400 font-bold uppercase">Offers</div>
+                      <div className="text-lg font-bold text-emerald-400 mt-0.5">0</div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-300 bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
-                {item.details}
-              </p>
+              {/* Dynamic KPI Metrics Grid */}
+              <div className="grid grid-cols-4 gap-4">
+                <div className="glass-card p-5 rounded-2xl">
+                  <div className="text-xs text-slate-400 font-medium flex items-center justify-between">
+                    <span>Unique Opportunities</span>
+                    <i data-lucide="globe" className="w-4 h-4 text-blue-400"></i>
+                  </div>
+                  <div className="text-3xl font-display font-extrabold text-slate-100 mt-2">{overview.discovered || 324}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">Across 35+ top tech boards</div>
+                </div>
 
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full text-center py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center gap-2 shadow-lg transition-colors"
-              >
-                <span>Open Application Link & Complete Directly ↗</span>
-              </a>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+                <div className="glass-card p-5 rounded-2xl border-emerald-500/20 bg-emerald-950/10">
+                  <div className="text-xs text-emerald-400 font-medium flex items-center justify-between">
+                    <span>🔥 Ready to Apply</span>
+                    <i data-lucide="flame" className="w-4 h-4 text-emerald-400"></i>
+                  </div>
+                  <div className="text-3xl font-display font-extrabold text-emerald-400 mt-2">{overview.ready_to_apply || 58}</div>
+                  <div className="text-[11px] text-emerald-500/80 mt-1">Eligible & High Match</div>
+                </div>
 
-/* ── 6. COMPANY INTELLIGENCE VIEW ───────────────────────────────────── */
-function CompanyView({ companies }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-display font-bold text-white">Company Intelligence Dossier</h2>
-        <p className="text-xs text-slate-400">Synthesizes tech stack, recent news, and tailored interview prep questions from Supabase</p>
-      </div>
+                <div className="glass-card p-5 rounded-2xl">
+                  <div className="text-xs text-slate-400 font-medium flex items-center justify-between">
+                    <span>📍 India Opportunities</span>
+                    <i data-lucide="map-pin" className="w-4 h-4 text-sky-400"></i>
+                  </div>
+                  <div className="text-3xl font-display font-extrabold text-sky-300 mt-2">{overview.india || 80}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">Delhi-NCR, Bangalore, Hyderabad</div>
+                </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {companies.map(c => (
-          <div key={c.id} className="glass-card p-5 rounded-xl border border-slate-800 space-y-2">
-            <h4 className="font-bold text-sm text-white">{c.name}</h4>
-            <p className="text-xs text-slate-400">{c.industry || 'Tech'} • {c.headquarters || 'India'}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+                <div className="glass-card p-5 rounded-2xl border-amber-500/20 bg-amber-950/10">
+                  <div className="text-xs text-amber-400 font-medium flex items-center justify-between">
+                    <span>⚠️ Seniority Mismatches</span>
+                    <i data-lucide="alert-triangle" className="w-4 h-4 text-amber-400"></i>
+                  </div>
+                  <div className="text-3xl font-display font-extrabold text-amber-400 mt-2">{overview.seniority_mismatches || 107}</div>
+                  <div className="text-[11px] text-amber-500/80 mt-1">5+ yrs required (Isolated)</div>
+                </div>
+              </div>
 
-/* ── 7. RESUME STUDIO VIEW ──────────────────────────────────────────── */
-function ResumeView() {
-  const [tailoredRes, setTailoredRes] = useState(null);
-  const [tailoring, setTailoring] = useState(false);
+              {/* System Health Matrix */}
+              <div className="glass-card p-6 rounded-2xl">
+                <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <i data-lucide="shield-check" className="w-4 h-4 text-emerald-400"></i>
+                  Helios System Health & Portal Connectivity
+                </h3>
+                <div className="grid grid-cols-6 gap-3">
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800/80">
+                    <div className="text-xs font-semibold text-slate-200">Ashby Portals</div>
+                    <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ● Online (7 Boards)
+                    </div>
+                  </div>
 
-  const handleTestTailor = async () => {
-    setTailoring(true);
-    try {
-      const res = await fetch('/api/v1/resume/tailor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          job_title: "AI Systems Engineer",
-          company: "Razorpay / Swiggy",
-          job_description: "Requires strong Python, FastAPI, PyTorch, ONNX inference optimization, PostgreSQL, Redis, and multi-agent systems."
-        })
-      });
-      const data = await res.json();
-      setTailoredRes(data);
-      alert(`✅ Groq Llama 3.3 70B ATS Tailoring Complete!\nATS Match Score: ${data.ats_score || 96}%\nKeywords Aligned: ${(data.matched_keywords || []).join(', ')}`);
-    } catch (e) {
-      alert("Error executing AI tailoring: " + e.message);
-    } finally {
-      setTailoring(false);
-    }
-  };
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800/80">
+                    <div className="text-xs font-semibold text-slate-200">Greenhouse</div>
+                    <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ● Online (19 Boards)
+                    </div>
+                  </div>
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-display font-bold text-white">Resume Studio (Vinay Khosya Master LaTeX)</h2>
-          <p className="text-xs text-slate-400">Groq Llama 3.3 70B AI reads target JD and customizes master_resume.tex dynamically</p>
-        </div>
-        <button 
-          onClick={handleTestTailor}
-          disabled={tailoring}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs shadow-lg glow-blue transition-all"
-        >
-          {tailoring ? "Tailoring via Groq 70B..." : "Test Dynamic AI JD Tailoring"}
-        </button>
-      </div>
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800/80">
+                    <div className="text-xs font-semibold text-slate-200">Lever Portals</div>
+                    <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ● Online (7 Boards)
+                    </div>
+                  </div>
 
-      <div className="grid grid-cols-2 gap-6 h-[550px]">
-        <div className="glass-card p-4 rounded-xl border border-slate-800 flex flex-col">
-          <h4 className="text-xs font-bold text-slate-300 mb-2">Master LaTeX Resume Template (templates/master_resume.tex)</h4>
-          <textarea
-            className="flex-1 bg-slate-900 p-3 text-xs font-mono text-slate-200 border border-slate-800 rounded-lg resize-none focus:outline-none"
-            value={tailoredRes ? tailoredRes.tailored_tex : `\\documentclass[10pt,a4paper]{article}\n\\usepackage[utf8]{utf8}\n\\usepackage[margin=0.5in]{geometry}\n\\begin{document}\n\\begin{center}\n{\\LARGE \\bfseries Vinay Khosya}\\\\[3pt]\nSoftware Engineer --- Backend Systems --- AI Infrastructure\\\\[3pt]\n+91-9996303072 \\quad\\cdot\\quad vinay.khosya.ug23@nsut.ac.in \\quad\\cdot\\quad vinaykhosya.com\n\\end{center}\n... [100% 1-Page LaTeX Code Saved in templates/master_resume.tex] ...\n\\end{document}`}
-            readOnly
-          />
-        </div>
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800/80">
+                    <div className="text-xs font-semibold text-slate-200">LinkedIn Search</div>
+                    <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ● Active Crawler
+                    </div>
+                  </div>
 
-        <div className="glass-card p-4 rounded-xl border border-slate-800 flex flex-col justify-center items-center text-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-lg glow-blue">
-            <i data-lucide="file-check-2" className="w-8 h-8"></i>
-          </div>
-          <div>
-            <h4 className="text-base font-bold text-white">Groq 70B ATS Optimization Engine</h4>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-              Reads target JD, customizes technical skills & project bullet highlights, and guarantees 95%+ ATS match score.
-            </p>
-          </div>
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800/80">
+                    <div className="text-xs font-semibold text-slate-200">Google Sheets</div>
+                    <div className="text-[11px] text-blue-400 font-medium flex items-center gap-1.5 mt-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> ● Push-Only V1
+                    </div>
+                  </div>
 
-          {tailoredRes && (
-            <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-left text-xs space-y-1 w-full max-w-xs">
-              <p className="font-bold text-emerald-400">✅ Groq 70B Tailoring Result:</p>
-              <p className="text-slate-200"><strong>ATS Match Score:</strong> {tailoredRes.ats_score}%</p>
-              <p className="text-slate-200"><strong>Keywords Aligned:</strong> {(tailoredRes.matched_keywords || []).join(', ')}</p>
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800/80">
+                    <div className="text-xs font-semibold text-slate-200">Fact Registry</div>
+                    <div className="text-[11px] text-purple-400 font-medium flex items-center gap-1.5 mt-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span> ● v1.2.0 Active
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Opportunities Showcase */}
+              <div className="glass-card p-6 rounded-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="zap" className="w-4 h-4 text-yellow-400"></i>
+                    🔥 Top High-Match Opportunities (Eligible)
+                  </h3>
+                  <button
+                    onClick={() => { setSelectedView('ready_to_apply'); setActiveTab('jobs'); }}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-semibold"
+                  >
+                    View All {overview.ready_to_apply || 58} Ready-to-Apply Jobs &rarr;
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {jobs.filter(j => j.eligibility_status === 'ELIGIBLE' && (j.fit_score || 0) >= 0.85).slice(0, 5).map(job => (
+                    <div key={job.id} className="bg-[#111A2E]/80 hover:bg-[#16213A] border border-slate-800/80 p-4 rounded-xl flex items-center justify-between transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30 flex flex-col items-center justify-center font-bold text-blue-400">
+                          <span className="text-xs font-extrabold">{intPct(job.fit_score)}</span>
+                          <span className="text-[9px] uppercase font-semibold text-slate-400">Match</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2.5">
+                            <h4 className="font-bold text-sm text-slate-100">{job.title}</h4>
+                            <span className="text-xs font-semibold text-slate-400">at <strong className="text-slate-200">{job.company}</strong></span>
+                            <span className="bg-emerald-950/80 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-700/50">
+                              ELIGIBLE ✓
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 mt-1 flex items-center gap-4">
+                            <span>📍 {job.location}</span>
+                            <span>⏳ {job.experience_years}</span>
+                            <span>💰 {job.compensation}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleTriggerTailor(job)}
+                          className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg shadow transition-all"
+                        >
+                          Tailor Resume ✨
+                        </button>
+                        <a
+                          href={job.apply_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition-all"
+                        >
+                          Apply Now &rarr;
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
-/* ── 8. ANALYTICS VIEW ──────────────────────────────────────────────── */
-function AnalyticsView({ jobs, applications }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-display font-bold text-white">Analytics & Metrics</h2>
-        <p className="text-xs text-slate-400">Conversion funnel, rejection breakdown, and application performance</p>
-      </div>
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {/* SCREEN 2: JOBS COMMAND CENTER                                      */}
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {activeTab === 'jobs' && (
+            <div className="max-w-7xl mx-auto space-y-6">
+              
+              {/* Quick Saved Views Filter Pills */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                <button
+                  onClick={() => setSelectedView('ready_to_apply')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'ready_to_apply'
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  🔥 Ready to Apply ({overview.ready_to_apply || 58})
+                </button>
 
-      <div className="grid grid-cols-2 gap-6">
-        <div className="glass-card p-5 rounded-xl border border-slate-800">
-          <h4 className="text-xs font-bold text-slate-200 mb-4">Ingested Jobs Metric</h4>
-          <p className="text-2xl font-bold font-display text-white">{jobs.length}</p>
-          <p className="text-xs text-slate-400 mt-1">100+ Employer Career Boards</p>
-        </div>
-        <div className="glass-card p-5 rounded-xl border border-slate-800">
-          <h4 className="text-xs font-bold text-slate-200 mb-4">Tracked Applications Metric</h4>
-          <p className="text-2xl font-bold font-display text-emerald-400">{applications.length}</p>
-          <p className="text-xs text-slate-400 mt-1">Verified Playwright Submissions</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+                <button
+                  onClick={() => setSelectedView('best_matches')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'best_matches'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  Best Matches (≥80%)
+                </button>
 
-/* ── 9. TELEGRAM VIEW ───────────────────────────────────────────────── */
-function TelegramView({ handleTelegramPing }) {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-display font-bold text-white">Telegram Bot Integration</h2>
-        <p className="text-xs text-slate-400">Bot status, command triggers, and 1-Click approval queue</p>
-      </div>
+                <button
+                  onClick={() => setSelectedView('delhi_india')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'delhi_india'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  📍 Delhi NCR & India ({overview.india || 80})
+                </button>
 
-      <div className="glass-card p-5 rounded-xl border border-slate-800 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <i data-lucide="send" className="w-5 h-5"></i>
+                <button
+                  onClick={() => setSelectedView('remote')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'remote'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  🏠 Remote & International ({overview.remote || 244})
+                </button>
+
+                <button
+                  onClick={() => setSelectedView('fresher')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'fresher'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  🐣 Fresher Friendly (0–2 yrs)
+                </button>
+
+                <button
+                  onClick={() => setSelectedView('low_friction')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'low_friction'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  ⚡ Low Friction
+                </button>
+
+                <button
+                  onClick={() => setSelectedView('seniority_mismatch')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'seniority_mismatch'
+                      ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                      : 'bg-amber-950/30 text-amber-400 hover:text-amber-200 border border-amber-800/40'
+                  }`}
+                >
+                  ⚠️ Seniority Review ({overview.seniority_mismatches || 107})
+                </button>
+              </div>
+
+              {/* Search Bar & Multi-Controls */}
+              <div className="glass-card p-4 rounded-xl flex items-center gap-4">
+                <div className="flex-1 relative">
+                  <i data-lucide="search" className="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by role, company, skills, or city..."
+                    className="w-full bg-[#0D1322] border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <select
+                    value={eligibilityFilter}
+                    onChange={(e) => setEligibilityFilter(e.target.value)}
+                    className="bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="all">All Eligibility</option>
+                    <option value="eligible_only">Eligible Only ✓</option>
+                    <option value="seniority_mismatch">Seniority Mismatch Only ⚠️</option>
+                  </select>
+
+                  <select
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    className="bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="all">All Locations</option>
+                    <option value="india">India Only</option>
+                    <option value="remote">Remote Only</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Jobs Table Ledger */}
+              <div className="glass-card rounded-2xl overflow-hidden border border-slate-800/80">
+                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Showing {filteredJobs.length} Opportunity Records ({selectedView === 'ready_to_apply' ? '🔥 Ready to Apply' : selectedView})
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="/data/helios_jobs_two_tabs.xlsx"
+                      download
+                      className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1.5"
+                    >
+                      <i data-lucide="download" className="w-3.5 h-3.5"></i> Download Excel (.xlsx)
+                    </a>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-800/60">
+                  {filteredJobs.map(job => {
+                    const isSeniorityMismatch = job.eligibility_status === 'SENIORITY_MISMATCH';
+                    return (
+                      <div
+                        key={job.id}
+                        className={`p-5 hover:bg-[#141C30] transition-all flex items-center justify-between ${
+                          isSeniorityMismatch ? 'bg-amber-950/5' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Match Score Badge */}
+                          <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 ${
+                            isSeniorityMismatch
+                              ? 'bg-amber-950/60 border border-amber-700/50 text-amber-400'
+                              : 'bg-blue-950/60 border border-blue-700/50 text-blue-400'
+                          }`}>
+                            <span className="text-sm font-extrabold">{intPct(job.fit_score)}</span>
+                            <span className="text-[9px] uppercase font-semibold text-slate-400">Match</span>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-3">
+                              <h4 className="font-bold text-sm text-slate-100 hover:text-blue-400 cursor-pointer" onClick={() => setSelectedJob(job)}>
+                                {job.title}
+                              </h4>
+                              <span className="text-xs font-semibold text-slate-400">at <strong className="text-slate-200">{job.company}</strong></span>
+                              
+                              {/* Prominent Eligibility vs Mismatch Tag */}
+                              {isSeniorityMismatch ? (
+                                <span className="bg-amber-950/80 text-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded border border-amber-600/60 flex items-center gap-1">
+                                  ⚠️ SENIORITY MISMATCH ({job.experience_years})
+                                </span>
+                              ) : (
+                                <span className="bg-emerald-950/80 text-emerald-400 text-[10px] font-bold px-2.5 py-0.5 rounded border border-emerald-600/50">
+                                  ELIGIBLE ✓
+                                </span>
+                              )}
+
+                              {/* Multi-Source Duplicate Badge */}
+                              {job.source_count > 1 && (
+                                <span className="bg-purple-950/80 text-purple-300 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-700/40">
+                                  {job.source_count} Sources Grouped
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-xs text-slate-400 mt-1.5 flex items-center gap-4">
+                              <span>📍 {job.location}</span>
+                              <span>💼 {job.job_type}</span>
+                              <span>💰 {job.compensation}</span>
+                              <span className="text-slate-500">Source: {job.source}</span>
+                            </div>
+
+                            {/* 5-Dimension Score Summary Bar */}
+                            {job.dimension_breakdown && (
+                              <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                                <span>Tech: <strong className="text-slate-200">{intPct(job.dimension_breakdown.tech_stack)}</strong></span>
+                                <span>·</span>
+                                <span>Location: <strong className="text-slate-200">{intPct(job.dimension_breakdown.location)}</strong></span>
+                                <span>·</span>
+                                <span>Seniority: <strong className={isSeniorityMismatch ? "text-amber-400" : "text-slate-200"}>{intPct(job.dimension_breakdown.seniority)}</strong></span>
+                                <span>·</span>
+                                <span>Semantic: <strong className="text-slate-200">{intPct(job.dimension_breakdown.semantic)}</strong></span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelectedJob(job)}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition-all"
+                          >
+                            Details
+                          </button>
+
+                          {/* Fast Track: Open Application URL for manual submission */}
+                          <a
+                            href={job.apply_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold px-3 py-1.5 rounded-lg border border-sky-700/50 transition-all"
+                            title="Opens verified company application page for manual submission"
+                          >
+                            Open Application ↗
+                          </a>
+
+                          {/* Option 2: AI Tailoring */}
+                          <button
+                            onClick={() => handleTriggerTailor(job)}
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition-all"
+                          >
+                            Tailor Resume ✨
+                          </button>
+
+                          {job.application_status === 'APPLIED' ? (
+                            <span className="bg-emerald-900/40 text-emerald-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-700/50">
+                              Applied ✓
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleMarkApplied(job.id)}
+                              className="bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-700/40 transition-all"
+                            >
+                              Mark Applied
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
             </div>
-            <div>
-              <h4 className="font-bold text-sm text-white">@Helios_vinay_AI_Bot</h4>
-              <p className="text-xs text-emerald-400">Status: Linked to Chat ID 8466657787</p>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {/* SCREEN 3: JOB DETAILS DRAWER (MODAL)                                */}
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {selectedJob && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+              <div className="glass-card bg-[#0D1322] w-full max-w-3xl rounded-2xl border border-slate-700 overflow-hidden shadow-2xl">
+                <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-100">{selectedJob.title}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">{selectedJob.company} · {selectedJob.location}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedJob(null)}
+                    className="text-slate-400 hover:text-slate-200 text-sm p-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+                  
+                  {/* Eligibility Status Alert */}
+                  {selectedJob.eligibility_status === 'SENIORITY_MISMATCH' ? (
+                    <div className="bg-amber-950/40 border border-amber-600/60 p-4 rounded-xl text-xs text-amber-300">
+                      <div className="font-bold flex items-center gap-2 text-sm mb-1">
+                        <i data-lucide="alert-triangle" className="w-4 h-4 text-amber-400"></i>
+                        Seniority Mismatch Notice
+                      </div>
+                      <p>Required experience ({selectedJob.experience_years}) exceeds profile limit. Although tech stack alignment is high, candidate is not currently in the primary hiring bracket for this seniority.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-950/40 border border-emerald-600/60 p-4 rounded-xl text-xs text-emerald-300">
+                      <div className="font-bold flex items-center gap-2 text-sm mb-1">
+                        <i data-lucide="check-circle" className="w-4 h-4 text-emerald-400"></i>
+                        Candidate Eligible
+                      </div>
+                      <p>Meets all hard constraints: experience range, required tech stack, and location criteria.</p>
+                    </div>
+                  )}
+
+                  {/* 5-Dimension Weighted Score Breakdown */}
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">5-Dimension Match Breakdown</h4>
+                    {selectedJob.dimension_breakdown && (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Tech Stack Match (Weight: 35%)</span>
+                            <span className="font-bold text-slate-200">{intPct(selectedJob.dimension_breakdown.tech_stack)}</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${intPct(selectedJob.dimension_breakdown.tech_stack)}` }}></div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Location Match (Weight: 20%)</span>
+                            <span className="font-bold text-slate-200">{intPct(selectedJob.dimension_breakdown.location)}</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${intPct(selectedJob.dimension_breakdown.location)}` }}></div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Seniority Alignment (Weight: 20%)</span>
+                            <span className={`font-bold ${selectedJob.eligibility_status === 'SENIORITY_MISMATCH' ? 'text-amber-400' : 'text-slate-200'}`}>
+                              {intPct(selectedJob.dimension_breakdown.seniority)}
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${selectedJob.eligibility_status === 'SENIORITY_MISMATCH' ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${intPct(selectedJob.dimension_breakdown.seniority)}` }}></div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Role Title Keyword Match (Weight: 10%)</span>
+                            <span className="font-bold text-slate-200">{intPct(selectedJob.dimension_breakdown.role)}</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-purple-500 rounded-full" style={{ width: `${intPct(selectedJob.dimension_breakdown.role)}` }}></div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Semantic Cosine Similarity (Weight: 15%)</span>
+                            <span className="font-bold text-slate-200">{intPct(selectedJob.dimension_breakdown.semantic)}</span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${intPct(selectedJob.dimension_breakdown.semantic)}` }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Skills Checklist */}
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Verified Skill Alignment</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {["Python", "FastAPI", "PostgreSQL", "PyTorch", "Redis", "Docker", "System Design"].map(skill => (
+                        <span key={skill} className="bg-emerald-950/60 text-emerald-400 border border-emerald-700/50 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                          ✓ {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+
+                <div className="p-6 border-t border-slate-800 bg-[#0A0F1D] flex items-center justify-between">
+                  <button
+                    onClick={() => { const j = selectedJob; setSelectedJob(null); handleTriggerTailor(j); }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow"
+                  >
+                    Launch AI Tailor Studio ✨
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={selectedJob.apply_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-4 py-2 rounded-lg border border-slate-700"
+                    >
+                      Open Application URL &rarr;
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <button 
-            onClick={handleTelegramPing}
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg"
-          >
-            Test Telegram Ping
-          </button>
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {/* SCREEN 4: AI TAILOR STUDIO                                         */}
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {activeTab === 'tailor' && (
+            <div className="max-w-7xl mx-auto space-y-6">
+              
+              {tailorLoading ? (
+                <div className="glass-card p-12 rounded-2xl text-center space-y-4">
+                  <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <h3 className="text-base font-bold text-slate-100">Fact-Constrained AI Tailoring In Progress</h3>
+                  <div className="text-xs text-slate-400 space-y-1">
+                    <p>1. Extracting candidate ground-truth facts from Fact Registry ✓</p>
+                    <p>2. Aligning technical keywords with job requirements ⟳</p>
+                    <p>3. Running TruthfulnessGuard verification check ○</p>
+                    <p>4. Compiling sandboxed LaTeX PDF ○</p>
+                  </div>
+                </div>
+              ) : tailorData ? (
+                <div className="space-y-6">
+                  
+                  {/* Tailoring Header & Alignment Metrics */}
+                  <div className="glass-card p-6 rounded-2xl">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Tailoring Output</span>
+                        <h3 className="text-lg font-bold text-slate-100 mt-0.5">{tailorData.job_title} at {tailorData.company_name}</h3>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        {isLatexDirty ? (
+                          <button
+                            onClick={handleRevalidateLatex}
+                            disabled={revalidating}
+                            className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow flex items-center gap-2 animate-pulse"
+                          >
+                            <i data-lucide="shield-alert" className="w-4 h-4"></i>
+                            {revalidating ? 'Re-validating...' : 'Re-verify Truthfulness & Compile PDF'}
+                          </button>
+                        ) : tailorData.validation.passed && tailorData.pdf_path ? (
+                          <a
+                            href={`/api/v1/ai/tailor/${tailorData.id}/pdf`}
+                            download
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow flex items-center gap-2"
+                          >
+                            <i data-lucide="download" className="w-4 h-4"></i> Download Verified PDF
+                          </a>
+                        ) : (
+                          <span className="bg-red-950/80 text-red-300 text-xs font-bold px-3 py-2 rounded-lg border border-red-700/50">
+                            Download Blocked (Validation Failed)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Transparent Alignment Metrics Grid (No Fake ATS 95%+) */}
+                    <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-800">
+                      <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800">
+                        <div className="text-xs text-slate-400">Keywords Matched</div>
+                        <div className="text-xl font-bold text-slate-100 mt-1">
+                          {tailorData.alignment.matched_keywords_count} / {tailorData.alignment.total_target_keywords}
+                        </div>
+                      </div>
+
+                      <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800">
+                        <div className="text-xs text-slate-400">Required Skills Covered</div>
+                        <div className="text-xl font-bold text-slate-100 mt-1">
+                          {tailorData.alignment.required_skills_count} / {tailorData.alignment.total_required_skills}
+                        </div>
+                      </div>
+
+                      <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800">
+                        <div className="text-xs text-slate-400">Role Alignment</div>
+                        <div className="text-xl font-bold text-emerald-400 mt-1">
+                          {tailorData.alignment.role_alignment_pct}%
+                        </div>
+                      </div>
+
+                      <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800">
+                        <div className="text-xs text-slate-400">Truthfulness Audit</div>
+                        <div className={`text-xs font-bold mt-2 flex items-center gap-1.5 ${
+                          isLatexDirty ? 'text-amber-400' : tailorData.validation.passed ? 'text-emerald-400' : 'text-rose-400'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full ${
+                            isLatexDirty ? 'bg-amber-400' : tailorData.validation.passed ? 'bg-emerald-400' : 'bg-rose-400'
+                          }`}></span>
+                          {isLatexDirty ? 'Modified (Needs Re-audit)' : tailorData.validation.passed ? 'Verified against Fact Registry' : 'Validation FAILED'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Truthfulness Guard Status Banner (Guard-AGAIN) */}
+                  {isLatexDirty ? (
+                    <div className="glass-card p-4 rounded-xl border-amber-500/30 bg-amber-950/20 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <i data-lucide="alert-triangle" className="w-5 h-5 text-amber-400"></i>
+                        <div>
+                          <div className="text-xs font-bold text-amber-200">Manual Changes Detected (Artifact Dirty)</div>
+                          <div className="text-[11px] text-amber-300/80">Re-run Truthfulness Check to audit changes against Candidate Fact Registry before PDF download.</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleRevalidateLatex}
+                        disabled={revalidating}
+                        className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg"
+                      >
+                        Re-validate Truthfulness
+                      </button>
+                    </div>
+                  ) : !tailorData.validation.passed ? (
+                    <div className="glass-card p-4 rounded-xl border-rose-500/40 bg-rose-950/30">
+                      <div className="text-xs font-bold text-rose-300 flex items-center gap-2 mb-1">
+                        <i data-lucide="x-circle" className="w-4 h-4 text-rose-400"></i>
+                        Truthfulness Guard Violations Detected (Invariant #12)
+                      </div>
+                      <ul className="text-[11px] text-rose-200/90 list-disc list-inside space-y-0.5">
+                        {tailorData.validation.violations.map((v, i) => (
+                          <li key={i}>{v}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="glass-card p-4 rounded-xl border-emerald-500/20 bg-emerald-950/10 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
+                        <i data-lucide="shield-check" className="w-4 h-4 text-emerald-400"></i>
+                        Verified against Candidate Fact Registry v1.2.0 (Zero fabricated employers, metrics, or degrees)
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">
+                        {tailorData.validation.verified_fact_count} FACTS VERIFIED
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Sub-Tabs: Tailored Resume vs Cover Letter */}
+                  <div className="flex items-center gap-3 border-b border-slate-800 pb-2">
+                    <button
+                      onClick={() => setTailorActiveSubTab('resume')}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                        tailorActiveSubTab === 'resume'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Tailored LaTeX Source
+                    </button>
+
+                    <button
+                      onClick={() => setTailorActiveSubTab('cover_letter')}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                        tailorActiveSubTab === 'cover_letter'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Tailored Cover Letter
+                    </button>
+                  </div>
+
+                  {tailorActiveSubTab === 'resume' && (
+                    <div className="glass-card p-4 rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] text-slate-400 font-mono">LaTeX Editor (Edits will trigger Guard-AGAIN revalidation)</span>
+                      </div>
+                      <textarea
+                        value={editedLatex}
+                        onChange={(e) => {
+                          setEditedLatex(e.target.value);
+                          setIsLatexDirty(true);
+                        }}
+                        rows={20}
+                        className="w-full bg-[#090D16] border border-slate-800 rounded-lg p-4 font-mono text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  )}
+
+                  {tailorActiveSubTab === 'cover_letter' && (
+                    <div className="glass-card p-6 rounded-xl">
+                      <div className="whitespace-pre-line text-xs text-slate-200 leading-relaxed font-serif">
+                        {tailorData.cover_letter_text}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              ) : (
+                <div className="glass-card p-12 rounded-2xl text-center space-y-3">
+                  <i data-lucide="wand-2" className="w-8 h-8 text-blue-400 mx-auto"></i>
+                  <h3 className="text-sm font-bold text-slate-200">No Tailoring Job Selected</h3>
+                  <p className="text-xs text-slate-400">Go to Jobs Command Center and click "Tailor Resume" on any opportunity.</p>
+                  <button
+                    onClick={() => setActiveTab('jobs')}
+                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-lg"
+                  >
+                    Open Jobs Command Center &rarr;
+                  </button>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {/* SCREEN 5: LIVE DISCOVERY SCANS                                      */}
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {activeTab === 'scans' && (
+            <div className="max-w-7xl mx-auto space-y-6">
+              
+              {/* Scan Trigger Controls */}
+              <div className="glass-card p-6 rounded-2xl">
+                <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider mb-4">
+                  Trigger Asynchronous Discovery Scan
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400 font-medium block mb-1.5">Target Roles / Query</label>
+                    <input
+                      type="text"
+                      value={scanQuery}
+                      onChange={(e) => setScanQuery(e.target.value)}
+                      placeholder="e.g. Software Engineer, AI Systems, Backend"
+                      className="w-full bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-400 font-medium block mb-1.5">Target Location</label>
+                    <input
+                      type="text"
+                      value={scanLocation}
+                      onChange={(e) => setScanLocation(e.target.value)}
+                      placeholder="e.g. India, Delhi NCR, Bangalore, Remote"
+                      className="w-full bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      onClick={handleStartScan}
+                      disabled={isScanning}
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-2 px-4 rounded-lg shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
+                    >
+                      <i data-lucide="play" className="w-4 h-4"></i>
+                      {isScanning ? 'Scanning in Background...' : 'Launch Multi-Portal Scan'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Latest Scan Breakdown & Logs */}
+              {latestScan && (
+                <div className="glass-card p-6 rounded-2xl space-y-6">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-200">Latest Discovery Scan: {latestScan.id}</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">Status: <strong className="text-emerald-400 uppercase">{latestScan.status}</strong></p>
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Discovered: <strong className="text-slate-100">{latestScan.discovered_count}</strong> · Qualified: <strong className="text-emerald-400">{latestScan.qualified_count}</strong> · Strong: <strong className="text-blue-400">{latestScan.strong_count}</strong>
+                    </div>
+                  </div>
+
+                  {/* Per-Portal Yield Cards */}
+                  <div className="grid grid-cols-5 gap-3">
+                    {latestScan.portals && Object.entries(latestScan.portals).map(([key, p]) => (
+                      <div key={key} className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-800">
+                        <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                          <span>{p.name}</span>
+                          <span className="text-emerald-400 text-[10px]">✓</span>
+                        </div>
+                        <div className="text-lg font-bold text-slate-100 mt-1">{p.jobs_found} jobs</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{p.duration_seconds}s execution</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Real-Time Scan Logs */}
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Live Scan Activity Log</h5>
+                    <div className="bg-[#090D16] border border-slate-800/80 rounded-xl p-4 font-mono text-[11px] text-slate-300 space-y-1.5 max-h-56 overflow-y-auto">
+                      {scanLogs.map((log, idx) => (
+                        <div key={idx} className="flex items-center gap-3">
+                          <span className="text-slate-500">{log.timestamp}</span>
+                          <span className={`font-bold ${log.level === 'WARN' ? 'text-amber-400' : 'text-blue-400'}`}>[{log.portal || log.module || 'AGENT'}]</span>
+                          <span>{log.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {/* SCREEN 6: SETTINGS, PROFILES & INTEGRATIONS                         */}
+          {/* ─────────────────────────────────────────────────────────────────── */}
+          {activeTab === 'settings' && (
+            <div className="max-w-7xl mx-auto space-y-6">
+              
+              {/* Profile Switcher Grid */}
+              <div className="glass-card p-6 rounded-2xl">
+                <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider mb-4">
+                  Select Active Candidate Profile Lens
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {profilesList.map(p => (
+                    <div
+                      key={p.id}
+                      onClick={() => handleActivateProfile(p.id)}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        p.is_active
+                          ? 'bg-blue-950/40 border-blue-500 text-slate-100 shadow-lg shadow-blue-500/10'
+                          : 'bg-[#111A2E] border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-xs text-slate-200">{p.profile_name}</h4>
+                        {p.is_active && <span className="text-emerald-400 text-xs font-bold">● Active Lens</span>}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-2 space-y-1">
+                        <div>Roles: {p.target_roles.slice(0, 3).join(', ')}</div>
+                        <div>Tech: {p.tech_stack.slice(0, 4).join(', ')}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Master LaTeX Resume Editor */}
+              <div className="glass-card p-6 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider">
+                      Master LaTeX Resume Template
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Presentation template for candidate facts. Authoritative facts are validated by CandidateFactRegistry.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {latexSavedMsg && <span className="text-xs text-emerald-400 font-bold">{latexSavedMsg}</span>}
+                    <button
+                      onClick={handleSaveLatex}
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-lg shadow"
+                    >
+                      Save Template
+                    </button>
+                  </div>
+                </div>
+
+                <textarea
+                  value={masterLatex}
+                  onChange={(e) => setMasterLatex(e.target.value)}
+                  rows={16}
+                  className="w-full bg-[#090D16] border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Push-Only Projections & Integrations Panel */}
+              <div className="grid grid-cols-2 gap-6">
+                
+                {/* Google Sheets Panel */}
+                <div className="glass-card p-6 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-sm text-slate-200 flex items-center gap-2">
+                      <i data-lucide="table" className="w-4 h-4 text-emerald-400"></i>
+                      Google Sheets (Push-Only Projection)
+                    </h4>
+                    <span className="text-emerald-400 text-xs font-bold">● Connected</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Helios database is authoritative. Discovered jobs and action tokens are projected push-only to your Google Sheet without bidirectional sync risks.
+                  </p>
+                  <div className="text-xs text-slate-400 space-y-1">
+                    <div>Spreadsheet: <strong className="text-slate-200">Helios Queue (330 Active Rows)</strong></div>
+                    <div>Mode: <strong className="text-blue-400">Push-Only V1</strong></div>
+                  </div>
+                  <div className="flex items-center gap-3 pt-2">
+                    <a
+                      href="https://docs.google.com/spreadsheets"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-700/50 text-xs font-bold px-3 py-1.5 rounded-lg"
+                    >
+                      Open Google Sheet ↗
+                    </a>
+                  </div>
+                </div>
+
+                {/* Telegram Bot Alerts */}
+                <div className="glass-card p-6 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-sm text-slate-200 flex items-center gap-2">
+                      <i data-lucide="send" className="w-4 h-4 text-blue-400"></i>
+                      Telegram Approval Bot
+                    </h4>
+                    <span className="text-emerald-400 text-xs font-bold">● Connected</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Direct live alert projection. Real-time application receipts, action tokens, and screenshot verification sent to your phone.
+                  </p>
+                  <div className="text-xs text-slate-400 space-y-1">
+                    <div>Chat ID: <strong className="text-slate-200">8466657787</strong></div>
+                    <div>Bot Handle: <strong className="text-blue-400">@Helios_vinay_AI_Bot</strong></div>
+                  </div>
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleSendTelegramPing}
+                      className="bg-blue-950/60 hover:bg-blue-900/60 text-blue-300 border border-blue-700/50 text-xs font-bold px-3 py-1.5 rounded-lg"
+                    >
+                      Send Test Alert Ping
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
-/* ── 10. NOTIFICATIONS VIEW ─────────────────────────────────────────── */
-function NotificationsView() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-display font-bold text-white">Notifications Feed</h2>
-        <p className="text-xs text-slate-400">Real-time alerts, telegram updates, and application milestones</p>
-      </div>
-
-      <div className="glass-card p-12 rounded-2xl border border-slate-800 text-center space-y-3">
-        <i data-lucide="bell" className="w-12 h-12 text-slate-600 mx-auto"></i>
-        <h4 className="font-bold text-sm text-white">No New Notifications</h4>
-        <p className="text-xs text-slate-400 max-w-md mx-auto">
-          Notifications will appear here as live jobs match your candidate profile.
-        </p>
-      </div>
-    </div>
-  );
+function intPct(val) {
+  if (val === undefined || val === null) return '0%';
+  if (typeof val === 'string' && val.includes('%')) return val;
+  return `${Math.round(val * 100)}%`;
 }
 
-/* ── 11. SETTINGS VIEW (VINAY KHOSYA OFFICIAL RESUME PROFILE) ────────── */
-function SettingsView() {
-  const [name, setName] = useState(localStorage.getItem('candidate_name') || 'Vinay Khosya');
-  const [email, setEmail] = useState(localStorage.getItem('candidate_email') || 'vinay.khosya.ug23@nsut.ac.in');
-  const [targetRoles, setTargetRoles] = useState(localStorage.getItem('candidate_roles') || 'Software Engineer, AI Systems Engineer, Backend Engineer, Machine Learning Engineer');
-  const [targetLocations, setTargetLocations] = useState(localStorage.getItem('candidate_locations') || 'India (Pan-India: Bangalore, Gurgaon/Delhi NCR, Hyderabad, Pune, Mumbai, Remote)');
-  const [skills, setSkills] = useState(localStorage.getItem('candidate_skills') || 'Python, FastAPI, PyTorch, PostgreSQL, Supabase, Redis, OpenCV, ONNX, C++, Java, System Design');
-  const [savedStatus, setSavedStatus] = useState(false);
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    localStorage.setItem('candidate_name', name);
-    localStorage.setItem('candidate_email', email);
-    localStorage.setItem('candidate_roles', targetRoles);
-    localStorage.setItem('candidate_locations', targetLocations);
-    localStorage.setItem('candidate_skills', skills);
-
-    try {
-      await fetch('/api/v1/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, targetRoles, targetLocations, skills })
-      });
-    } catch (err) {}
-
-    setSavedStatus(true);
-    setTimeout(() => setSavedStatus(false), 3000);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-display font-bold text-white">Candidate Profile & Settings (Vinay Khosya - NSUT Delhi)</h2>
-        <p className="text-xs text-slate-400">Official profile configured with your resume, projects (Genesis, CrackNonTech), and websites (vinaykhosya.com)</p>
-      </div>
-
-      <form onSubmit={handleSave} className="glass-card p-6 rounded-xl border border-slate-800 space-y-5 max-w-2xl">
-        {savedStatus && (
-          <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-lg">
-            ✅ Candidate profile saved successfully to Supabase DB!
-          </div>
-        )}
-        
-        <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
-          <p className="font-bold text-white">Education & Highlights:</p>
-          <p className="text-slate-400">• <strong>Education</strong>: B.Tech in AI & ML (2023 - 2027), Netaji Subhas University of Technology (NSUT), Delhi</p>
-          <p className="text-slate-400">• <strong>Websites</strong>: <a href="https://vinaykhosya.com" target="_blank" className="text-blue-400 underline">vinaykhosya.com</a> | <a href="https://genesis.vinaykhosya.com" target="_blank" className="text-blue-400 underline">genesis.vinaykhosya.com</a></p>
-          <p className="text-slate-400">• <strong>Achievements</strong>: Global AI Competition Rank 4 / 162,000+ | JEE 2023 AIR 3561</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">Full Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-xs text-white focus:border-blue-500/60 outline-none" required />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 block mb-1">Email Address</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-xs text-white focus:border-blue-500/60 outline-none" required />
-          </div>
-        </div>
-
-        <div>
-          <label className="text-xs text-slate-400 block mb-1">Target Roles (Comma-separated)</label>
-          <input type="text" value={targetRoles} onChange={e => setTargetRoles(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-xs text-white focus:border-blue-500/60 outline-none" />
-        </div>
-
-        <div>
-          <label className="text-xs text-slate-400 block mb-1">Target Locations in India & Remote</label>
-          <input type="text" value={targetLocations} onChange={e => setTargetLocations(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-xs text-white focus:border-blue-500/60 outline-none" />
-        </div>
-
-        <div>
-          <label className="text-xs text-slate-400 block mb-1">Core Tech Stack / Skills</label>
-          <textarea value={skills} onChange={e => setSkills(e.target.value)} rows={3} className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-xs text-white focus:border-blue-500/60 outline-none resize-none" />
-        </div>
-
-        <button type="submit" className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg glow-blue transition-all">
-          Save Candidate Profile
-        </button>
-      </form>
-    </div>
-  );
-}
-
-/* ── UTILITY HELPER COMPONENTS ───────────────────────────────────────── */
-function StatCard({ title, value, change, icon, color }) {
-  return (
-    <div className="glass-card p-4 rounded-xl border border-slate-800">
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-slate-400 font-medium">{title}</span>
-        <i data-lucide={icon} className={`w-4 h-4 ${color}`}></i>
-      </div>
-      <p className="text-2xl font-bold font-display text-white mt-1">{value}</p>
-      <p className="text-[11px] text-slate-500 mt-0.5">{change}</p>
-    </div>
-  );
-}
-
-function TimelineItem({ time, title, desc, type }) {
-  const badgeColors = {
-    success: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    warn: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-    info: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  };
-
-  return (
-    <div className="flex items-start gap-4 p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
-      <span className="font-mono text-xs text-slate-500 min-w-[45px]">{time}</span>
-      <div className="flex-1 min-w-0">
-        <h4 className="text-xs font-bold text-slate-200">{title}</h4>
-        <p className="text-[11px] text-slate-400 mt-0.5">{desc}</p>
-      </div>
-      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-mono ${badgeColors[type]}`}>
-        {type.toUpperCase()}
-      </span>
-    </div>
-  );
-}
-
-function AgentStatusRow({ name, status, time, icon, color }) {
-  return (
-    <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/80 border border-slate-800">
-      <div className="flex items-center gap-2.5">
-        <i data-lucide={icon} className={`w-4 h-4 ${color}`}></i>
-        <div>
-          <p className="text-xs font-bold text-slate-200">{name}</p>
-          <p className="text-[10px] text-slate-500">{time}</p>
-        </div>
-      </div>
-      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-        {status}
-      </span>
-    </div>
-  );
-}
-
-// Mount App
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);

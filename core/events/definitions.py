@@ -64,6 +64,20 @@ class JobDiscovered(HeliosEvent):
     source_url: str
 
 
+class JobPersisted(HeliosEvent):
+    """
+    Fired by IngestionWorker AFTER the job row is committed to the database.
+    At this point, job.id is a REAL UUID that exists in the jobs table.
+
+    INVARIANT: This event is emitted post-persistence, never pre-persistence.
+    EmbeddingWorker subscribes here. WorkflowOrchestrator does NOT subscribe here.
+    Subscribers: EmbeddingWorker ONLY.
+    """
+    job_id: str       # real DB UUID
+    source: str
+    source_url: str
+
+
 class JobUpdated(HeliosEvent):
     """
     Fired when an existing job's fields change (title, deadline, salary, status).
@@ -119,7 +133,17 @@ class ApplicationStatusChanged(HeliosEvent):
 
 class ApplicationSubmitted(HeliosEvent):
     """
-    Fired when an application form is auto-filled or submitted successfully.
+    Fired when an application form is verified as submitted by Playwright evidence.
+
+    INVARIANT (Invariant #1): This event may ONLY be emitted after:
+      1. Playwright successfully submitted the form, AND
+      2. Evidence of submission exists (confirmation page, confirmation_id, screenshot).
+    It is NEVER emitted merely because:
+      - routing decision is AUTO_APPLY, or
+      - ApplicationORM(AUTOMATION_QUEUED) was created, or
+      - a user approved an application in Telegram.
+    Violation of this invariant is a critical data integrity bug.
+
     Subscribers: MemoryService, NotificationWorker, MetricsWorker.
     """
     app_id: str
@@ -156,6 +180,42 @@ class HumanApprovalRequested(HeliosEvent):
     confidence_score: float
 
 
+class HumanApprovalGranted(HeliosEvent):
+    """
+    Fired when a human approves an application request (e.g., via Telegram inline button).
+    Subscribers: WorkflowOrchestrator (to resume Playwright automation).
+    """
+    pending_id: str
+    job_id: str
+    user_id: str
+    application_id: str
+
+
+class ApplicationManuallySubmitted(HeliosEvent):
+    """
+    Fired when a user confirms they have manually submitted an application via
+    the /mark-applied endpoint (POST, after confirming via the GET page).
+
+    This is distinct from ApplicationSubmitted — no Playwright evidence is required.
+    It records a user's self-reported action.
+    Subscribers: MemoryService, NotificationWorker, GoogleSheetsSyncService.
+    """
+    app_id: str
+    user_id: str
+    job_id: str
+    applied_at: datetime
+
+
+class ApplicationPreparationFailed(HeliosEvent):
+    """
+    Fired when the pipeline fails to prepare or route an application
+    (e.g., eligibility gate failed, friction scorer errored, routing exception).
+    Subscribers: DeadLetterQueue, MonitoringWorker.
+    """
+    job_id: str
+    user_id: str
+    reason: str
+    stage: str    # e.g. "eligibility_gate", "ranking", "routing"
 
 # ── Connector / Pipeline Lifecycle ────────────────────────────────────────────
 

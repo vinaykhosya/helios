@@ -40,55 +40,77 @@ class RankingResult(BaseModel):
 class RankingAgent:
     """
     Multi-dimensional soft scoring agent.
+
+    Dimensions and weights (must sum to 1.0):
+      1. Tech Stack   — 0.35
+      2. Location     — 0.20
+      3. Seniority    — 0.20
+      4. Role Title   — 0.10
+      5. Semantic     — 0.15  (fallback 0.5 until SemanticScorer wired in Phase 7)
     """
 
-    def __init__(self, profile: CandidateProfile):
+    DIMENSION_WEIGHTS = {
+        "Tech Stack": 0.35,
+        "Location": 0.20,
+        "Seniority": 0.20,
+        "Role Title": 0.10,
+        "Semantic": 0.15,
+    }
+
+    def __init__(self, profile: CandidateProfile, semantic_scorer: Optional[Any] = None):
         self.profile = profile
         self.skill_extractor = SkillExtractor()
         self.skill_scorer = SkillMatchScorer()
+        self._semantic_scorer = semantic_scorer
 
-    def rank(self, job: Job) -> RankingResult:
+    def rank(
+        self,
+        job: Job,
+        embedding_id: str = "",
+        job_vector: Optional[list[float]] = None,
+    ) -> RankingResult:
         """
         Calculates multi-dimensional score and recommendation for a job.
+
+        Args:
+            job:          The job to rank.
+            embedding_id: The stored embedding ID for this job (from EmbeddingGenerated event).
+                          Empty string ("") means embedding is unavailable — semantic score
+                          falls back to 0.5 (neutral contribution).
+            job_vector:   Optional direct precomputed float vector.
         """
         dimensions: list[MatchDimension] = []
 
-        # Dimension 1: Tech Stack Match (Weight: 0.40)
+        # Dimension 1: Tech Stack Match (Weight: 0.35)
         job_skills = self.skill_extractor.extract_from_job(job)
         candidate_skills = self.skill_extractor.extract_from_profile(self.profile)
         skill_result = self.skill_scorer.score(job_skills, candidate_skills)
-
         dimensions.append(MatchDimension(
             name="Tech Stack",
             score=skill_result.overall_score,
-            weight=0.40,
+            weight=self.DIMENSION_WEIGHTS["Tech Stack"],
             matched=skill_result.overall_score >= 0.5,
         ))
 
         # Dimension 2: Location Match (Weight: 0.20)
-        is_remote = (job.remote == RemotePolicy.REMOTE or str(job.remote) == "remote")
-        location_matched = is_remote or any(
-            target.lower() in (job.location or "").lower() for target in self.profile.target_locations
-        )
-        loc_score = 1.0 if location_matched else 0.0
+        location_score = self._compute_location_score(job)
         dimensions.append(MatchDimension(
             name="Location",
-            score=loc_score,
-            weight=0.20,
-            matched=location_matched,
+            score=location_score,
+            weight=self.DIMENSION_WEIGHTS["Location"],
+            matched=location_score >= 0.7,
         ))
 
-        # Dimension 3: Seniority & Experience Match (Weight: 0.20)
-        exp_req = job.experience_years if job.experience_years is not None else 1.0
-        exp_score = 1.0 if exp_req <= self.profile.max_experience_years else 0.4
+        # Dimension 3: Seniority Match (Weight: 0.20)
+        seniority_score = self._compute_seniority_score(job)
         dimensions.append(MatchDimension(
             name="Seniority",
-            score=exp_score,
-            weight=0.20,
-            matched=exp_score >= 0.8,
+            score=seniority_score,
+            weight=self.DIMENSION_WEIGHTS["Seniority"],
+            matched=seniority_score >= 0.7,
         ))
 
-        # Dimension 4: Role Keyword Match (Weight: 0.20)
+        # Dimension 4: Role Keyword Match (Weight: 0.10)
         title_lower = (job.title or "").lower()
         role_matched = any(
             role_kw.lower() in title_lower for role_kw in self.profile.ideal_role_keywords
@@ -97,26 +119,59 @@ class RankingAgent:
         dimensions.append(MatchDimension(
             name="Role Title",
             score=role_score,
-            weight=0.20,
+            weight=self.DIMENSION_WEIGHTS["Role Title"],
             matched=role_matched,
         ))
+
+        # Dimension 5: Semantic Match (Weight: 0.15)
+        semantic_score = self._compute_semantic_score(embedding_id, job_vector)
+        dimensions.append(MatchDimension(
+            name="Semantic",
+            score=semantic_score,
+            weight=self.DIMENSION_WEIGHTS["Semantic"],
+            matched=semantic_score >= 0.5,
+        ))
+
+        # Validate weights sum to 1.0 (guards against future drift)
+        total_weight = sum(d.weight for d in dimensions)
+        assert abs(total_weight - 1.0) < 1e-6, (
+            f"RankingAgent dimension weights must sum to 1.0, got {total_weight:.4f}"
+        )
 
         # Calculate weighted overall score
         overall_score = sum(d.score * d.weight for d in dimensions)
         overall_score = round(overall_score, 3)
 
+        # Build dimension breakdown dict for UI display
+        breakdown = {
+            "tech_stack": skill_result.overall_score,
+            "location": location_score,
+            "seniority": seniority_score,
+            "role": role_score,
+            "semantic": semantic_score,
+        }
+        job.dimension_breakdown = breakdown
+
         # Confidence calculation
         confidence = min(round(overall_score * 1.1, 3), 1.0)
 
-        # Recommendation decision
-        if confidence >= 0.95:
-            recommendation = "auto_apply"
-        elif confidence >= 0.80:
-            recommendation = "ask_user"
+        # Seniority / Eligibility Status Evaluation
+        is_seniority_mismatch = seniority_score < 0.7
+        if is_seniority_mismatch:
+            job.eligibility_status = "SENIORITY_MISMATCH"
+            job.eligibility_reasons = [f"Required experience exceeds profile ({self.profile.max_experience_years} yrs max)"]
+            recommendation = "seniority_review"
+            reason = f"Seniority Mismatch. Overall fit: {int(overall_score * 100)}% (Tech: {int(skill_result.overall_score * 100)}%)."
         else:
-            recommendation = "review"
+            if confidence >= 0.95:
+                recommendation = "auto_apply"
+            elif confidence >= 0.80:
+                recommendation = "ask_user"
+            else:
+                recommendation = "review"
+            reason = f"Overall fit: {int(overall_score * 100)}%. Tech match: {int(skill_result.overall_score * 100)}%."
 
-        reason = f"Overall fit: {int(overall_score * 100)}%. Tech match: {int(skill_result.overall_score * 100)}%."
+        job.fit_score = overall_score
 
         return RankingResult(
             job_id=str(job.id),
@@ -127,3 +182,31 @@ class RankingAgent:
             recommendation=recommendation,
             reason=reason,
         )
+
+    def _compute_semantic_score(
+        self,
+        embedding_id: str,
+        job_vector: Optional[list[float]] = None,
+    ) -> float:
+        """
+        Returns the semantic similarity score for this job.
+        Uses injected SemanticScorer if available, otherwise returns 0.5 (neutral fallback).
+        """
+        if self._semantic_scorer is not None and (embedding_id or job_vector):
+            try:
+                return float(self._semantic_scorer.score(embedding_id, job_vector=job_vector))
+            except Exception as e:
+                print(f"[RankingAgent] SemanticScorer fallback: {e}")
+                return 0.5
+        return 0.5   # neutral fallback
+
+    def _compute_location_score(self, job: Job) -> float:
+        is_remote = (job.remote == RemotePolicy.REMOTE or str(job.remote) == "remote")
+        location_matched = is_remote or any(
+            target.lower() in (job.location or "").lower() for target in self.profile.target_locations
+        )
+        return 1.0 if location_matched else 0.0
+
+    def _compute_seniority_score(self, job: Job) -> float:
+        exp_req = job.experience_years if job.experience_years is not None else 1.0
+        return 1.0 if exp_req <= self.profile.max_experience_years else 0.4
