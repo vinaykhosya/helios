@@ -8,7 +8,7 @@ anomaly detection, and Ready-to-Apply gate invariant.
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from core.models.job import Job, JobSource, FreshnessStatus, FreshnessConfidence
+from core.models.job import Job, JobSource, FreshnessStatus, FreshnessConfidence, RoleRelevance
 from intelligence.freshness.gate import (
     FreshnessGate,
     FreshnessSettings,
@@ -38,6 +38,8 @@ def test_boundary_0_days_today(gate, ref_now):
         posted_at=ref_now,
         fit_score=0.90,
         apply_url="https://apply.url",
+        role_relevance=RoleRelevance.TARGET,
+        role_relevance_confidence=0.90,
     )
     evaluated = gate.evaluate_job(job, current_time=ref_now)
     assert evaluated.age_days == 0
@@ -51,11 +53,13 @@ def test_boundary_7_days_fresh_cutoff(gate, ref_now):
         source=JobSource.ASHBY,
         source_id="2",
         source_url="https://ashbyhq.com/test/2",
-        title="Backend Engineer",
+        title="AI Systems Engineer",
         company="Linear",
         posted_at=ref_now - timedelta(days=7),
         fit_score=0.85,
         apply_url="https://apply.url",
+        role_relevance=RoleRelevance.TARGET,
+        role_relevance_confidence=0.90,
     )
     evaluated = gate.evaluate_job(job, current_time=ref_now)
     assert evaluated.age_days == 7
@@ -140,13 +144,15 @@ def test_confirmed_repost_resets_freshness(gate, ref_now):
         source=JobSource.LINKEDIN,
         source_id="7",
         source_url="https://linkedin.com/jobs/7",
-        title="Data Engineer",
+        title="AI Engineer",
         company="Meta",
         posted_at=ref_now - timedelta(days=30),
         is_reposted=True,
         reposted_at=ref_now - timedelta(days=2),
         fit_score=0.88,
         apply_url="https://apply.url",
+        role_relevance=RoleRelevance.TARGET,
+        role_relevance_confidence=0.90,
     )
     evaluated = gate.evaluate_job(job, current_time=ref_now)
     assert evaluated.age_days == 2
@@ -282,13 +288,15 @@ def test_81_pct_match_posted_2_days_ago_is_ready_to_apply(gate, ref_now):
         source=JobSource.ASHBY,
         source_id="12",
         source_url="https://ashbyhq.com/test/12",
-        title="Software Engineer",
+        title="AI Engineer",
         company="Vercel",
         posted_at=ref_now - timedelta(days=2),
         fit_score=0.81,
         eligibility_status="ELIGIBLE",
         friction_level="LOW",
         apply_url="https://vercel.com/apply",
+        role_relevance=RoleRelevance.TARGET,
+        role_relevance_confidence=0.90,
     )
     evaluated = gate.evaluate_job(fresh_moderate_fit, current_time=ref_now)
     assert evaluated.fit_score == 0.81
@@ -335,7 +343,7 @@ def test_canonical_merge_with_confirmed_repost_uses_repost_date(gate, ref_now):
         source=JobSource.LINKEDIN,
         source_id="repost-merge-1",
         source_url="https://linkedin.com/jobs/view/123",
-        title="Senior Backend Engineer",
+        title="AI Engineer",
         company="Stripe",
         posted_at=merged.get("posted_at"),
         is_reposted=merged.get("is_reposted"),
@@ -343,6 +351,8 @@ def test_canonical_merge_with_confirmed_repost_uses_repost_date(gate, ref_now):
         freshness_confidence=merged.get("freshness_confidence"),
         fit_score=0.92,
         apply_url="https://stripe.com/apply",
+        role_relevance=RoleRelevance.TARGET,
+        role_relevance_confidence=0.90,
     )
     evaluated = gate.evaluate_job(job, current_time=ref_now)
     assert evaluated.age_days == 2

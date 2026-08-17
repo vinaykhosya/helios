@@ -247,27 +247,16 @@ class FreshnessGate:
             avail_ok = (not job.is_closed) and (job.availability != "CLOSED")
             status_ok = job.application_status not in ["APPLIED", "SKIPPED"]
 
-            # Role Relevance Invariant
+            # Role Relevance Invariant: Only TARGET or ADJACENT are permitted. UNKNOWN strictly fails.
             role_rel = str(job.role_relevance).replace("RoleRelevance.", "") if job.role_relevance else "UNKNOWN"
             role_conf = job.role_relevance_confidence
             adj_score = job.adjacent_ml_evidence_score
 
-            if role_rel == "UNKNOWN":
-                title_l = (job.title or "").lower()
-                if any(k in title_l for k in ["recruiter", "talent", "customer support", "call center", "sales", "marketing", "hr "]):
-                    role_rel = "IRRELEVANT"
-                elif any(k in title_l for k in ["machine learning", "ml", "ai", "engineer", "developer", "backend", "systems", "data"]):
-                    role_rel = "TARGET"
-                    role_conf = 0.90
-
-            if role_rel == "IRRELEVANT" or role_rel == "UNKNOWN":
-                role_ok = False
-            elif role_rel == "TARGET":
-                role_ok = (role_conf >= 0.70)
-            elif role_rel == "ADJACENT":
-                role_ok = (role_conf >= 0.70 and adj_score >= 0.60)
-            else:
-                role_ok = False
+            role_ok = (
+                role_rel in ["TARGET", "ADJACENT"]
+                and role_conf >= 0.70
+                and (role_rel == "TARGET" or adj_score >= 0.60)
+            )
 
             return elig and (fit >= 0.80) and fresh and age_ok and friction_ok and url_ok and avail_ok and status_ok and role_ok
 
@@ -286,30 +275,22 @@ class FreshnessGate:
             app_status = job.get("application_status", "NOT_APPLIED")
             status_ok = app_status not in ["APPLIED", "SKIPPED"]
 
-            # Role Relevance Invariant
+            # Role Relevance Invariant: Only TARGET or ADJACENT are permitted. UNKNOWN strictly fails.
             raw_rel = job.get("role_relevance")
             if raw_rel is None:
-                # If not classified in dict, default to TARGET if engineering title
-                title_l = str(job.get("title") or job.get("Role / Title") or "").lower()
-                if any(k in title_l for k in ["recruiter", "talent", "customer support", "call center", "sales", "marketing"]):
-                    role_rel = "IRRELEVANT"
-                else:
-                    role_rel = "TARGET"
-                role_conf = 0.90
-                adj_score = 0.70
+                role_rel = "UNKNOWN"
+                role_conf = 0.0
+                adj_score = 0.0
             else:
                 role_rel = str(raw_rel).replace("RoleRelevance.", "")
-                role_conf = float(job.get("role_relevance_confidence", 0.85))
+                role_conf = float(job.get("role_relevance_confidence", 0.0))
                 adj_score = float(job.get("adjacent_ml_evidence_score", 0.0))
 
-            if role_rel == "IRRELEVANT" or role_rel == "UNKNOWN":
-                role_ok = False
-            elif role_rel == "TARGET":
-                role_ok = (role_conf >= 0.70)
-            elif role_rel == "ADJACENT":
-                role_ok = (role_conf >= 0.70 and adj_score >= 0.60)
-            else:
-                role_ok = False
+            role_ok = (
+                role_rel in ["TARGET", "ADJACENT"]
+                and role_conf >= 0.70
+                and (role_rel == "TARGET" or adj_score >= 0.60)
+            )
 
             return elig and (fit >= 0.80) and fresh and age_ok and friction_ok and url_ok and avail_ok and status_ok and role_ok
         return False

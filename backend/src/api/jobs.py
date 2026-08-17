@@ -8,10 +8,12 @@ duplicate grouping, and quick actions (Mark Applied, Skip, Details).
 from __future__ import annotations
 
 import os
+import re
 import csv
 import json
 import uuid
 import httpx
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -85,12 +87,14 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
                     is_senior = False
                     exp_lower = exp.lower()
                     title_lower = title.lower()
+                    title_norm = re.sub(r'[^a-zA-Z0-9\s]', ' ', title_lower)
 
                     if any(k in exp_lower for k in ["4+", "5+", "6+", "7+", "8+", "10+", "5-", "7-", "5-8", "6-10", "7-10"]):
                         is_senior = True
-                    if any(k in title_lower for k in ["principal", "engineering manager", "director", "head of", "lead architect", "senior", "sr.", "sr ", "staff", "fellow", "expert", "lead engineer"]):
+                    hard_senior_kws = ["senior", "sr", "staff", "principal", "lead", "director", "manager", "mgr", "head of", "vp", "vice president", "fellow", "expert", "distinguished"]
+                    if any(re.search(rf"\b{re.escape(k)}\b", title_norm) for k in hard_senior_kws):
                         is_senior = True
-                    if "architect" in title_lower and (is_senior or any(k in exp_lower for k in ["4+", "5+", "6+", "7+", "8+"])):
+                    if "architect" in title_norm and (is_senior or any(k in exp_lower for k in ["4+", "5+", "6+", "7+", "8+"])):
                         is_senior = True
 
                     eligibility_status = "SENIORITY_MISMATCH" if is_senior else "ELIGIBLE"

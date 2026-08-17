@@ -217,18 +217,19 @@ class RankingAgent:
         title_lower = (job.title or "").lower()
         desc_lower = (job.description or "").lower()
         full_text = f"{title_lower}\n{desc_lower}"
+        title_norm = re.sub(r'[^a-zA-Z0-9\s]', ' ', title_lower)
         
         # 1. Hard senior title prefixes
         hard_senior_keywords = [
-            "senior", "sr.", "sr ", "staff", "principal", "lead", "director",
-            "manager", "head of", "vp", "vice president", "fellow", "expert", "distinguished"
+            "senior", "sr", "staff", "principal", "lead", "director",
+            "manager", "mgr", "head of", "vp", "vice president", "fellow", "expert", "distinguished"
         ]
         has_hard_senior_title = any(
-            re.search(rf"\b{re.escape(kw)}\b", title_lower) for kw in hard_senior_keywords
+            re.search(rf"\b{re.escape(kw)}\b", title_norm) for kw in hard_senior_keywords
         )
 
         # 2. Architect title (Seniority Risk)
-        has_architect_title = bool(re.search(r"\barchitect\b", title_lower))
+        has_architect_title = bool(re.search(r"\barchitect\b", title_norm))
 
         # 3. Numeric experience check
         exp_req = job.experience_years
