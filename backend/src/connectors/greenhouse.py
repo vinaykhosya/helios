@@ -113,18 +113,31 @@ class GreenhouseConnector(BaseConnector):
     def normalize(self, raw: dict) -> Job:
         """Translate GreenhouseJob model dump to universal Job model."""
         loc_name = raw.get("location", {}).get("name", "")
+        updated_raw = raw.get("updated_at")
+        created_raw = raw.get("created_at") or raw.get("first_published")
 
-        # Default properties
-        return Job(
+        from intelligence.freshness.gate import parse_timestamp, FreshnessGate
+        posted_dt, conf, _ = parse_timestamp(created_raw or updated_raw)
+        updated_dt, _, _ = parse_timestamp(updated_raw)
+
+        job = Job(
             source=JobSource.GREENHOUSE,
             source_id=str(raw.get("id")),
             source_url=raw.get("absolute_url") or f"https://boards.greenhouse.io/{self.board_token}/jobs/{raw.get('id')}",
             title=raw.get("title", "Untitled Job"),
-            company=self.board_token.capitalize(),  # Use board token capitalization as company name
+            company=self.board_token.capitalize(),
             location=loc_name,
             description=raw.get("content", ""),
+            posted_at=posted_dt,
+            posted_date=posted_dt,
+            last_updated_at=updated_dt,
+            freshness_confidence=conf,
+            freshness_source="greenhouse",
+            apply_url=raw.get("absolute_url") or f"https://boards.greenhouse.io/{self.board_token}/jobs/{raw.get('id')}",
             raw_data=raw,
         )
+        gate = FreshnessGate()
+        return gate.evaluate_job(job)
 
     async def health_check(self) -> bool:
         """Validate if the Greenhouse board token exists and responds."""

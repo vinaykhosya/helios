@@ -42,7 +42,10 @@ class LeverNormalizer:
         if posting.additional:
             description += f"\n\n{posting.additional}"
 
-        return Job(
+        from intelligence.freshness.gate import parse_timestamp, FreshnessGate
+        posted_dt, conf, _ = parse_timestamp(posting.createdAt)
+
+        job = Job(
             source=JobSource.LEVER,
             source_id=posting.id,
             source_url=posting.hostedUrl,
@@ -50,8 +53,15 @@ class LeverNormalizer:
             company=site.capitalize(),
             location=location,
             description=description,
+            apply_url=posting.hostedUrl,
+            posted_at=posted_dt,
+            posted_date=posted_dt,
+            freshness_confidence=conf,
+            freshness_source="lever",
             raw_data=posting.model_dump(),
         )
+        gate = FreshnessGate()
+        return gate.evaluate_job(job)
 
 
 class LeverConnector(BaseConnector):

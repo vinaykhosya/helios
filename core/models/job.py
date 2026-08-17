@@ -52,6 +52,23 @@ class SalaryConfidence(str, Enum):
     UNKNOWN = "unknown"      # no salary information available
 
 
+class FreshnessStatus(str, Enum):
+    """Orthogonal job age classification."""
+    FRESH = "FRESH"            # age <= 7 days (Configurable)
+    AGING = "AGING"            # 8–14 days
+    STALE = "STALE"            # 15–30 days
+    VERY_STALE = "VERY_STALE"  # > 30 days
+    UNKNOWN = "UNKNOWN"        # reliable date unavailable (fail-closed for ready-to-apply)
+
+
+class FreshnessConfidence(str, Enum):
+    """Provenance tracking for job age calculation."""
+    CONFIRMED_POSTED = "CONFIRMED_POSTED"      # Exact publication timestamp from ATS
+    CONFIRMED_REPOSTED = "CONFIRMED_REPOSTED"  # Verified renewed publication timestamp
+    INFERRED = "INFERRED"                      # Parsed relative string ("2 days ago")
+    UNKNOWN = "UNKNOWN"                        # No reliable date available
+
+
 class Salary(BaseModel):
     """Compensation details for a job posting."""
 
@@ -112,16 +129,29 @@ class Job(BaseModel):
     skills: list[str] = Field(default_factory=list)
     industry: Optional[str] = None
 
-    # ── Timing ────────────────────────────────────────────────────────────────
+    # ── Timing & Freshness Provenance (Auditable Job OS) ──────────────────────
     posted_date: Optional[datetime] = None
+    posted_at: Optional[datetime] = None
+    last_updated_at: Optional[datetime] = None
+    is_reposted: bool = False
+    reposted_at: Optional[datetime] = None
+    discovered_at: datetime = Field(default_factory=datetime.utcnow)
+    freshness_reference_at: Optional[datetime] = None
+    age_days: Optional[int] = None
+    freshness_status: FreshnessStatus = FreshnessStatus.UNKNOWN
+    freshness_confidence: FreshnessConfidence = FreshnessConfidence.UNKNOWN
+    freshness_source: Optional[str] = None
+    date_anomaly: Optional[str] = None  # None | "FUTURE_TIMESTAMP" | "MALFORMED_INPUT"
     deadline: Optional[datetime] = None
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # ── Application ───────────────────────────────────────────────────────────
+    # ── Application & Availability ────────────────────────────────────────────
     apply_url: Optional[str] = None
+    is_closed: bool = False
+    availability: str = "OPEN"  # OPEN | CLOSED | UNKNOWN
 
     # ── Intelligence & Eligibility (populated by pipeline stages) ───────────
-    fit_score: Optional[float] = None        # 0.0–1.0, set by RankerStage
+    fit_score: Optional[float] = None        # 0.0–1.0, set by RankerStage (unmodified by age)
     embedding_id: Optional[str] = None       # FK to job_embeddings, set by EmbeddingGeneratorStage
     eligibility_status: str = "ELIGIBLE"     # ELIGIBLE | SENIORITY_MISMATCH | ROLE_MISMATCH | LOCATION_MISMATCH
     eligibility_reasons: list[str] = Field(default_factory=list)

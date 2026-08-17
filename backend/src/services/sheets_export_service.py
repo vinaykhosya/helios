@@ -1,11 +1,11 @@
 """
 backend/src/services/sheets_export_service.py
 
-Dual-Tab Excel & Live Google Sheets Push Synchronizer.
-Synchronizes all active jobs into:
-  1. Local 2-Tab Excel Workbook (data/helios_jobs_two_tabs.xlsx)
+Dual-Tab Excel & Live Google Sheets Push Synchronizer with Freshness Intelligence.
+Synchronizes opportunities into:
+  1. Local Excel Workbook (data/helios_jobs_two_tabs.xlsx) with Freshness & Provenance
   2. Local Master CSV (data/helios_live_jobs.csv)
-  3. Live Google Spreadsheet (Spreadsheet ID: 1-fMsNdwrR-OPZvrLza1QpGtrIj8GhsEy) across 2 tabs
+  3. Live Google Spreadsheet projection across distinct tabs
 """
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ import csv
 from typing import List, Dict, Any
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
+
+from intelligence.freshness.gate import FreshnessGate, DEFAULT_FRESHNESS_SETTINGS
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 EXCEL_PATH = os.path.join(BASE_DIR, "data", "helios_jobs_two_tabs.xlsx")
@@ -30,6 +32,11 @@ FIELDNAMES = [
     "Location / Remote",
     "Salary / CTC / Stipend",
     "Match Fit",
+    "Posted Date",
+    "Age (Days)",
+    "Freshness",
+    "Freshness Confidence",
+    "Ready to Apply",
     "Apply Link",
 ]
 
@@ -37,12 +44,14 @@ FIELDNAMES = [
 def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Regenerates and writes data/helios_jobs_two_tabs.xlsx and data/helios_live_jobs.csv
-    with two distinct tabs: 'India (Delhi-NCR & Tech Hubs)' and 'Remote & International'.
+    with Freshness Intelligence and provenance fields.
     """
     os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
+    gate = FreshnessGate(DEFAULT_FRESHNESS_SETTINGS)
 
     india_rows = []
     remote_rows = []
+    all_rows = []
 
     for j in jobs:
         fit_score = j.get("fit_score")
@@ -50,6 +59,21 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
             fit_str = f"{int(fit_score * 100)}%"
         else:
             fit_str = j.get("match_fit") or j.get("Match Fit") or "85%"
+
+        age_days = j.get("age_days")
+        age_str = f"{age_days}d" if age_days is not None else "Unknown"
+
+        fresh_status = j.get("freshness_status") or ("FRESH" if age_days is not None and age_days <= 7 else "UNKNOWN")
+        fresh_badge = (
+            "🟢 FRESH" if fresh_status == "FRESH"
+            else ("🟡 AGING" if fresh_status == "AGING"
+            else ("🟠 STALE" if fresh_status == "STALE"
+            else ("🔴 VERY STALE" if fresh_status == "VERY_STALE"
+            else "⚪ UNKNOWN")))
+        )
+
+        is_ready = gate.is_ready_to_apply(j)
+        ready_badge = "✅ YES" if is_ready else "❌ NO"
 
         row = {
             "Company": j.get("company") or j.get("Company") or "Unknown",
@@ -59,8 +83,15 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "Location / Remote": j.get("location") or j.get("Location / Remote") or "Remote",
             "Salary / CTC / Stipend": j.get("compensation") or j.get("Salary / CTC / Stipend") or "Competitive",
             "Match Fit": fit_str,
+            "Posted Date": j.get("posted_date_str") or j.get("Posted Date") or "Recent",
+            "Age (Days)": age_str,
+            "Freshness": fresh_badge,
+            "Freshness Confidence": j.get("freshness_confidence") or "CONFIRMED_POSTED",
+            "Ready to Apply": ready_badge,
             "Apply Link": j.get("apply_url") or j.get("Apply Link") or "#",
         }
+
+        all_rows.append(row)
 
         is_india = j.get("is_india")
         if is_india is None:
@@ -72,21 +103,34 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
         else:
             remote_rows.append(row)
 
-    # Sort each tab descending by match fit
-    def parse_fit(r):
+    # Sort each tab: Ready-to-apply & Freshness first, then fit score descending
+    def sort_key(r):
+        age_val = 999
         try:
-            return int(str(r["Match Fit"]).replace("%", ""))
+            raw_age = str(r["Age (Days)"]).replace("d", "")
+            if raw_age.isdigit():
+                age_val = int(raw_age)
         except Exception:
-            return 0
+            pass
 
-    india_rows.sort(key=parse_fit, reverse=True)
-    remote_rows.sort(key=parse_fit, reverse=True)
+        fit_val = 0
+        try:
+            fit_val = int(str(r["Match Fit"]).replace("%", ""))
+        except Exception:
+            pass
+
+        is_ready_prio = 0 if "YES" in r["Ready to Apply"] else 1
+        return (is_ready_prio, age_val, -fit_val)
+
+    india_rows.sort(key=sort_key)
+    remote_rows.sort(key=sort_key)
+    all_rows.sort(key=sort_key)
 
     # Write Master CSVs
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDNAMES)
         w.writeheader()
-        w.writerows(india_rows + remote_rows)
+        w.writerows(all_rows)
 
     with open(CSV_INDIA_PATH, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDNAMES)
@@ -98,7 +142,7 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
         w.writeheader()
         w.writerows(remote_rows)
 
-    # Generate 2-Tab Excel Workbook
+    # Generate Multi-Tab Excel Workbook
     wb = openpyxl.Workbook()
     ws1 = wb.active
     ws1.title = "India (Delhi-NCR & Tech Hubs)"
@@ -111,10 +155,15 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
     for r in remote_rows:
         ws2.append([r[k] for k in FIELDNAMES])
 
+    ws3 = wb.create_sheet(title="All Opportunities & History")
+    ws3.append(FIELDNAMES)
+    for r in all_rows:
+        ws3.append([r[k] for k in FIELDNAMES])
+
     header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
     header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
 
-    for ws in [ws1, ws2]:
+    for ws in [ws1, ws2, ws3]:
         for col_num, cell in enumerate(ws[1], 1):
             cell.fill = header_fill
             cell.font = header_font
@@ -163,18 +212,18 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
             ws_rem.update(range_name="A1", values=rem_matrix)
 
             gspread_synced = True
-            gspread_msg = f"Live Google Sheet updated directly across 2 tabs ({len(india_rows)} India, {len(remote_rows)} Remote)."
+            gspread_msg = f"Live Google Sheet updated directly across 2 tabs with Freshness Intelligence ({len(india_rows)} India, {len(remote_rows)} Remote)."
         except Exception as e:
             print(f"[SheetsExportService] gspread API note: {e}")
-            gspread_msg = f"Excel rebuilt ({len(india_rows)} India, {len(remote_rows)} Remote). Google API note: {e}"
+            gspread_msg = f"Excel rebuilt with Freshness Intelligence ({len(india_rows)} India, {len(remote_rows)} Remote). Google API note: {e}"
 
     return {
         "status": "success",
         "excel_path": EXCEL_PATH,
         "india_count": len(india_rows),
         "remote_count": len(remote_rows),
-        "total_rows": len(india_rows) + len(remote_rows),
+        "total_rows": len(all_rows),
         "gspread_synced": gspread_synced,
         "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
-        "message": gspread_msg or f"Successfully exported {len(india_rows) + len(remote_rows)} jobs ({len(india_rows)} India, {len(remote_rows)} Remote) to Excel & Google Sheet projection!",
+        "message": gspread_msg or f"Successfully exported {len(all_rows)} opportunities with Freshness Intelligence to Excel & Google Sheet projection!",
     }

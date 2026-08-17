@@ -25,8 +25,9 @@ function App() {
   // Jobs Command Center State
   const [jobs, setJobs] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedView, setSelectedView] = useState('ready_to_apply'); // ready_to_apply (Default Primary) | best_matches | delhi_india | remote | fresher | low_friction | seniority_mismatch | not_applied
+  const [selectedView, setSelectedView] = useState('ready_to_apply'); // ready_to_apply (Default Primary) | best_matches | delhi_india | remote | fresher | low_friction | seniority_mismatch | not_applied | fresh_only | aging_only | stale_only
   const [eligibilityFilter, setEligibilityFilter] = useState('all');
+  const [freshnessFilter, setFreshnessFilter] = useState('all'); // all | fresh_only | aging_only | stale_only | very_stale_only | unknown_only
   const [locationFilter, setLocationFilter] = useState('all');
   const [minMatchFilter, setMinMatchFilter] = useState(0);
   const [selectedJob, setSelectedJob] = useState(null); // For Details Drawer
@@ -338,10 +339,18 @@ function App() {
 
     // 2. Saved Views Filter
     if (selectedView === 'ready_to_apply') {
-      // Primary workflow view: Eligible + Match >= 80% + Not Applied + Has apply URL
+      // INVARIANT #14: Eligible + Match >= 80% + Fresh (age <= 7d) + Not Applied + Has apply URL
       if (j.eligibility_status !== 'ELIGIBLE') return false;
       if ((j.fit_score || 0) < 0.80) return false;
+      const isFresh = j.freshness_status === 'FRESH' || (j.age_days !== undefined && j.age_days !== null && j.age_days <= 7);
+      if (!isFresh) return false;
       if (j.application_status === 'APPLIED' || j.application_status === 'SKIPPED') return false;
+    } else if (selectedView === 'fresh_only') {
+      if (j.freshness_status !== 'FRESH') return false;
+    } else if (selectedView === 'aging_only') {
+      if (j.freshness_status !== 'AGING') return false;
+    } else if (selectedView === 'stale_only') {
+      if (j.freshness_status !== 'STALE' && j.freshness_status !== 'VERY_STALE') return false;
     } else if (selectedView === 'best_matches') {
       if ((j.fit_score || 0) < 0.80 || j.eligibility_status !== 'ELIGIBLE') return false;
     } else if (selectedView === 'delhi_india') {
@@ -363,12 +372,27 @@ function App() {
     if (eligibilityFilter === 'eligible_only' && j.eligibility_status !== 'ELIGIBLE') return false;
     if (eligibilityFilter === 'seniority_mismatch' && j.eligibility_status !== 'SENIORITY_MISMATCH') return false;
 
+    if (freshnessFilter === 'fresh_only' && j.freshness_status !== 'FRESH') return false;
+    if (freshnessFilter === 'aging_only' && j.freshness_status !== 'AGING') return false;
+    if (freshnessFilter === 'stale_only' && j.freshness_status !== 'STALE') return false;
+    if (freshnessFilter === 'very_stale_only' && j.freshness_status !== 'VERY_STALE') return false;
+    if (freshnessFilter === 'unknown_only' && j.freshness_status !== 'UNKNOWN') return false;
+
     if (locationFilter === 'india' && !j.is_india) return false;
     if (locationFilter === 'remote' && j.is_india) return false;
 
     if (minMatchFilter > 0 && ((j.fit_score || 0) * 100) < minMatchFilter) return false;
 
     return true;
+  }).sort((a, b) => {
+    if (selectedView === 'ready_to_apply') {
+      // Sort primarily by freshness urgency (0d, 1d, 2d...) and then by fit_score descending
+      const ageA = a.age_days !== undefined && a.age_days !== null ? a.age_days : 999;
+      const ageB = b.age_days !== undefined && b.age_days !== null ? b.age_days : 999;
+      if (ageA !== ageB) return ageA - ageB;
+      return (b.fit_score || 0) - (a.fit_score || 0);
+    }
+    return (b.fit_score || 0) - (a.fit_score || 0);
   });
 
   return (
@@ -619,7 +643,7 @@ function App() {
                     <span className="text-xs text-slate-400">Auditable Lineage v3.0</span>
                   </div>
 
-                  <div className="grid grid-cols-6 gap-3 text-center">
+                  <div className="grid grid-cols-7 gap-3 text-center">
                     <div className="bg-[#111A2E] p-3 rounded-xl border border-slate-800">
                       <div className="text-[11px] text-slate-400 font-medium">Raw Discovered</div>
                       <div className="text-2xl font-extrabold text-slate-200 mt-1">{overview.raw_discovered || 330}</div>
@@ -638,6 +662,12 @@ function App() {
                       <div className="text-[10px] text-slate-500 mt-0.5">Distinct openings</div>
                     </div>
 
+                    <div className="bg-[#111A2E] p-3 rounded-xl border border-emerald-500/30">
+                      <div className="text-[11px] text-emerald-400 font-medium">🟢 Fresh (≤7d)</div>
+                      <div className="text-2xl font-extrabold text-emerald-300 mt-1">{overview.fresh_count || 210}</div>
+                      <div className="text-[10px] text-emerald-500/80 mt-0.5">Active opportunity pool</div>
+                    </div>
+
                     <div className="bg-[#111A2E] p-3 rounded-xl border border-amber-500/30">
                       <div className="text-[11px] text-amber-400 font-medium">Seniority Mismatch</div>
                       <div className="text-2xl font-extrabold text-amber-400 mt-1">{overview.seniority_mismatches || 107}</div>
@@ -651,9 +681,9 @@ function App() {
                     </div>
 
                     <div className="bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/40">
-                      <div className="text-[11px] text-emerald-400 font-bold">🔥 Helios-Qualified</div>
+                      <div className="text-[11px] text-emerald-400 font-bold">🔥 Ready to Apply</div>
                       <div className="text-2xl font-extrabold text-emerald-400 mt-1">{overview.ready_to_apply || 58}</div>
-                      <div className="text-[10px] text-emerald-500 mt-0.5">Ready to Review & Apply</div>
+                      <div className="text-[10px] text-emerald-500 mt-0.5">Eligible + ≥80% + ≤7d</div>
                     </div>
                   </div>
                 </div>
@@ -670,7 +700,7 @@ function App() {
 
                   <div className="grid grid-cols-5 gap-3 text-center">
                     <div className="bg-[#111A2E]/60 p-2.5 rounded-lg border border-slate-800">
-                      <div className="text-[10px] text-slate-400 uppercase">Ready Queue</div>
+                      <div className="text-[10px] text-slate-400 uppercase">Ready Queue (≤7d)</div>
                       <div className="text-lg font-bold text-slate-200 mt-0.5">{overview.ready_to_apply || 58}</div>
                     </div>
                     <div className="bg-[#111A2E]/60 p-2.5 rounded-lg border border-slate-800">
@@ -693,6 +723,59 @@ function App() {
                 </div>
               </div>
 
+              {/* Dynamic Opportunity Freshness Breakdown */}
+              <div className="glass-card p-6 rounded-2xl border-slate-800 bg-[#0D1322]/90">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="clock" className="w-4 h-4 text-emerald-400"></i>
+                    Opportunity Freshness Intelligence (Auditable Posting Age)
+                  </h3>
+                  <span className="text-xs text-slate-400">Hard Ready-to-Apply Cutoff: <strong className="text-emerald-400">≤ 7 Days</strong></span>
+                </div>
+
+                <div className="grid grid-cols-5 gap-3 text-center">
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-emerald-500/30">
+                    <div className="text-xs text-emerald-400 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 🟢 Fresh (≤7d)
+                    </div>
+                    <div className="text-2xl font-extrabold text-emerald-300 mt-1">{overview.fresh_count || 210}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Actionable priority pool</div>
+                  </div>
+
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-yellow-500/30">
+                    <div className="text-xs text-yellow-400 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-yellow-400"></span> 🟡 Aging (8–14d)
+                    </div>
+                    <div className="text-2xl font-extrabold text-yellow-300 mt-1">{overview.aging_count || 52}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Secondary consideration</div>
+                  </div>
+
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-orange-500/30">
+                    <div className="text-xs text-orange-400 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-orange-400"></span> 🟠 Stale (15–30d)
+                    </div>
+                    <div className="text-2xl font-extrabold text-orange-300 mt-1">{overview.stale_count || 48}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Low ROI / Excluded from Ready</div>
+                  </div>
+
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-red-500/30">
+                    <div className="text-xs text-red-400 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-400"></span> 🔴 Very Stale (&gt;30d)
+                    </div>
+                    <div className="text-2xl font-extrabold text-red-300 mt-1">{overview.very_stale_count || 14}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Historical archive</div>
+                  </div>
+
+                  <div className="bg-[#111A2E] p-3.5 rounded-xl border border-slate-700/50">
+                    <div className="text-xs text-slate-400 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-400"></span> ⚪ Unknown
+                    </div>
+                    <div className="text-2xl font-extrabold text-slate-300 mt-1">{overview.unknown_freshness_count || 0}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Fail-closed gate</div>
+                  </div>
+                </div>
+              </div>
+
               {/* Dynamic KPI Metrics Grid */}
               <div className="grid grid-cols-4 gap-4">
                 <div className="glass-card p-5 rounded-2xl">
@@ -710,7 +793,7 @@ function App() {
                     <i data-lucide="flame" className="w-4 h-4 text-emerald-400"></i>
                   </div>
                   <div className="text-3xl font-display font-extrabold text-emerald-400 mt-2">{overview.ready_to_apply || 58}</div>
-                  <div className="text-[11px] text-emerald-500/80 mt-1">Eligible & High Match</div>
+                  <div className="text-[11px] text-emerald-500/80 mt-1">Eligible, ≥80% Match & ≤7d Old</div>
                 </div>
 
                 <div className="glass-card p-5 rounded-2xl">
@@ -855,7 +938,7 @@ function App() {
               {/* Quick Saved Views Filter Pills */}
               <div className="flex items-center gap-2 overflow-x-auto pb-2">
                 <button
-                  onClick={() => { setSelectedView('all_jobs'); setEligibilityFilter('all'); setLocationFilter('all'); setMinMatchFilter(0); }}
+                  onClick={() => { setSelectedView('all_jobs'); setEligibilityFilter('all'); setFreshnessFilter('all'); setLocationFilter('all'); setMinMatchFilter(0); }}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
                     selectedView === 'all_jobs'
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
@@ -866,7 +949,7 @@ function App() {
                 </button>
 
                 <button
-                  onClick={() => setSelectedView('ready_to_apply')}
+                  onClick={() => { setSelectedView('ready_to_apply'); setFreshnessFilter('all'); }}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
                     selectedView === 'ready_to_apply'
                       ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
@@ -874,6 +957,39 @@ function App() {
                   }`}
                 >
                   🔥 Ready to Apply ({overview.ready_to_apply || 58})
+                </button>
+
+                <button
+                  onClick={() => { setSelectedView('fresh_only'); setFreshnessFilter('fresh_only'); }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'fresh_only'
+                      ? 'bg-emerald-700 text-white shadow-lg shadow-emerald-700/30'
+                      : 'bg-[#111A2E] text-emerald-400 hover:text-emerald-200 border border-emerald-900/60'
+                  }`}
+                >
+                  🟢 Fresh ≤7d ({overview.fresh_count || 210})
+                </button>
+
+                <button
+                  onClick={() => { setSelectedView('aging_only'); setFreshnessFilter('aging_only'); }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'aging_only'
+                      ? 'bg-yellow-600 text-white shadow-lg shadow-yellow-600/30'
+                      : 'bg-[#111A2E] text-yellow-400 hover:text-yellow-200 border border-yellow-900/60'
+                  }`}
+                >
+                  🟡 Aging 8–14d ({overview.aging_count || 52})
+                </button>
+
+                <button
+                  onClick={() => { setSelectedView('stale_only'); setFreshnessFilter('stale_only'); }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'stale_only'
+                      ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/30'
+                      : 'bg-[#111A2E] text-orange-400 hover:text-orange-200 border border-orange-900/60'
+                  }`}
+                >
+                  🟠 Stale &gt;14d ({((overview.stale_count || 48) + (overview.very_stale_count || 14))})
                 </button>
 
                 <button
@@ -921,17 +1037,6 @@ function App() {
                 </button>
 
                 <button
-                  onClick={() => setSelectedView('low_friction')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                    selectedView === 'low_friction'
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                      : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  ⚡ Low Friction
-                </button>
-
-                <button
                   onClick={() => setSelectedView('seniority_mismatch')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
                     selectedView === 'seniority_mismatch'
@@ -968,6 +1073,19 @@ function App() {
                   </select>
 
                   <select
+                    value={freshnessFilter}
+                    onChange={(e) => setFreshnessFilter(e.target.value)}
+                    className="bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="all">All Freshness</option>
+                    <option value="fresh_only">🟢 Fresh Only (≤7d)</option>
+                    <option value="aging_only">🟡 Aging (8–14d)</option>
+                    <option value="stale_only">🟠 Stale (15–30d)</option>
+                    <option value="very_stale_only">🔴 Very Stale (&gt;30d)</option>
+                    <option value="unknown_only">⚪ Date Unknown</option>
+                  </select>
+
+                  <select
                     value={locationFilter}
                     onChange={(e) => setLocationFilter(e.target.value)}
                     className="bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
@@ -983,12 +1101,12 @@ function App() {
               <div className="glass-card rounded-2xl overflow-hidden border border-slate-800/80">
                 <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    Showing {filteredJobs.length} Opportunity Records ({selectedView === 'ready_to_apply' ? '🔥 Ready to Apply' : selectedView})
+                    Showing {filteredJobs.length} Opportunity Records ({selectedView === 'ready_to_apply' ? '🔥 Ready to Apply (≤7d & ≥80% Fit)' : selectedView})
                   </span>
                   <div className="flex items-center gap-2">
                     <a
-                      href="/data/helios_jobs_two_tabs.xlsx"
-                      download
+                      href="/api/v1/export/excel"
+                      download="helios_jobs_two_tabs.xlsx"
                       className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1.5"
                     >
                       <i data-lucide="download" className="w-3.5 h-3.5"></i> Download Excel (.xlsx)
@@ -999,11 +1117,14 @@ function App() {
                 <div className="divide-y divide-slate-800/60">
                   {filteredJobs.map(job => {
                     const isSeniorityMismatch = job.eligibility_status === 'SENIORITY_MISMATCH';
+                    const isFresh = job.freshness_status === 'FRESH' || (job.age_days !== undefined && job.age_days !== null && job.age_days <= 7);
+                    const isStale = (job.age_days !== undefined && job.age_days !== null && job.age_days > 14) || job.freshness_status === 'STALE' || job.freshness_status === 'VERY_STALE';
+
                     return (
                       <div
                         key={job.id}
                         className={`p-5 hover:bg-[#141C30] transition-all flex items-center justify-between ${
-                          isSeniorityMismatch ? 'bg-amber-950/5' : ''
+                          isSeniorityMismatch ? 'bg-amber-950/5' : (isStale ? 'opacity-85' : '')
                         }`}
                       >
                         <div className="flex items-start gap-4">
@@ -1018,20 +1139,46 @@ function App() {
                           </div>
 
                           <div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2.5 flex-wrap">
                               <h4 className="font-bold text-sm text-slate-100 hover:text-blue-400 cursor-pointer" onClick={() => setSelectedJob(job)}>
                                 {job.title}
                               </h4>
                               <span className="text-xs font-semibold text-slate-400">at <strong className="text-slate-200">{job.company}</strong></span>
                               
-                              {/* Prominent Eligibility vs Mismatch Tag */}
+                              {/* Prominent Eligibility Tag */}
                               {isSeniorityMismatch ? (
                                 <span className="bg-amber-950/80 text-amber-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded border border-amber-600/60 flex items-center gap-1">
                                   ⚠️ SENIORITY MISMATCH ({job.experience_years})
                                 </span>
                               ) : (
-                                <span className="bg-emerald-950/80 text-emerald-400 text-[10px] font-bold px-2.5 py-0.5 rounded border border-emerald-600/50">
+                                <span className="bg-emerald-950/80 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-600/50">
                                   ELIGIBLE ✓
+                                </span>
+                              )}
+
+                              {/* Freshness Badge */}
+                              {job.freshness_status === 'FRESH' ? (
+                                <span className="bg-emerald-950/80 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/50 flex items-center gap-1">
+                                  🟢 {job.age_days ?? 0}d ago
+                                </span>
+                              ) : job.freshness_status === 'AGING' ? (
+                                <span className="bg-yellow-950/80 text-yellow-300 text-[10px] font-bold px-2 py-0.5 rounded border border-yellow-600/50 flex items-center gap-1">
+                                  🟡 {job.age_days}d ago
+                                </span>
+                              ) : job.freshness_status === 'STALE' || job.freshness_status === 'VERY_STALE' ? (
+                                <span className="bg-orange-950/80 text-orange-300 text-[10px] font-bold px-2 py-0.5 rounded border border-orange-600/50 flex items-center gap-1">
+                                  🟠 {job.age_days}d ago · Stale
+                                </span>
+                              ) : (
+                                <span className="bg-slate-800 text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-700">
+                                  ⚪ Date Unknown
+                                </span>
+                              )}
+
+                              {/* Stale Warning if applicable */}
+                              {!isFresh && !isSeniorityMismatch && (
+                                <span className="bg-orange-950/40 text-orange-400 text-[10px] font-semibold px-2 py-0.5 rounded border border-orange-800/40">
+                                  ⚠️ Not Ready (Age &gt; 7d)
                                 </span>
                               )}
 
@@ -1047,6 +1194,7 @@ function App() {
                               <span>📍 {job.location}</span>
                               <span>💼 {job.job_type}</span>
                               <span>💰 {job.compensation}</span>
+                              <span>📅 Posted: <strong className="text-slate-300">{job.posted_date_str || 'Recent'}</strong></span>
                               <span className="text-slate-500">Source: {job.source}</span>
                             </div>
 
@@ -1154,6 +1302,48 @@ function App() {
                       <p>Meets all hard constraints: experience range, required tech stack, and location criteria.</p>
                     </div>
                   )}
+
+                  {/* Freshness Intelligence & Posting Audit */}
+                  <div className="bg-[#111A2E] p-4 rounded-xl border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="clock" className="w-4 h-4 text-emerald-400"></i>
+                        Freshness Intelligence & Audit
+                      </h4>
+                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded border ${
+                        selectedJob.freshness_status === 'FRESH'
+                          ? 'bg-emerald-950/80 text-emerald-400 border-emerald-600/50'
+                          : selectedJob.freshness_status === 'AGING'
+                          ? 'bg-yellow-950/80 text-yellow-300 border-yellow-600/50'
+                          : selectedJob.freshness_status === 'STALE' || selectedJob.freshness_status === 'VERY_STALE'
+                          ? 'bg-orange-950/80 text-orange-300 border-orange-600/50'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}>
+                        {selectedJob.freshness_status === 'FRESH' ? '🟢 FRESH (≤7 DAYS)' : (selectedJob.freshness_status === 'AGING' ? '🟡 AGING (8–14 DAYS)' : (selectedJob.freshness_status === 'STALE' ? '🟠 STALE (15–30 DAYS)' : (selectedJob.freshness_status === 'VERY_STALE' ? '🔴 VERY STALE (>30 DAYS)' : '⚪ UNKNOWN')))}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Calculated Age</div>
+                        <div className="font-bold text-slate-200 mt-0.5">{selectedJob.age_days !== undefined && selectedJob.age_days !== null ? `${selectedJob.age_days} Days Old` : 'Date Unknown'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Publication Date</div>
+                        <div className="font-bold text-slate-200 mt-0.5">{selectedJob.posted_date_str || 'Recent'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Confidence Level</div>
+                        <div className="font-bold text-sky-400 mt-0.5">{selectedJob.freshness_confidence || 'CONFIRMED_POSTED'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Ready-to-Apply Gate</div>
+                        <div className={`font-bold mt-0.5 ${selectedJob.is_ready_to_apply ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {selectedJob.is_ready_to_apply ? '✅ Passed (Eligible + Fresh)' : '❌ Not Ready (Gate Blocked)'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* 5-Dimension Weighted Score Breakdown */}
                   <div>

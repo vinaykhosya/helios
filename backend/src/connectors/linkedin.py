@@ -79,8 +79,12 @@ class LinkedInConnector(BaseConnector):
                         # Extract Job ID from URL or card
                         urn = card.get("data-entity-urn", "")
                         source_id = urn.split(":")[-1] if urn else str(uuid.uuid4())
+                        raw_date = time_el.get("datetime", "") if time_el else (time_el.text.strip() if time_el else "")
 
-                        jobs.append(Job(
+                        from intelligence.freshness.gate import parse_timestamp, FreshnessGate
+                        posted_dt, conf, _ = parse_timestamp(raw_date)
+
+                        j_obj = Job(
                             id=str(uuid.uuid4()),
                             source=JobSource.LINKEDIN,
                             source_id=source_id,
@@ -90,11 +94,17 @@ class LinkedInConnector(BaseConnector):
                             location=job_loc,
                             description=f"{title} at {company} in {job_loc}",
                             apply_url=apply_url,
+                            posted_at=posted_dt,
+                            posted_date=posted_dt,
+                            freshness_confidence=conf,
+                            freshness_source="linkedin",
                             raw_data={
-                                "date": time_el.get("datetime", "") if time_el else "",
+                                "date": raw_date,
                                 "location": job_loc,
                             }
-                        ))
+                        )
+                        gate = FreshnessGate()
+                        jobs.append(gate.evaluate_job(j_obj))
 
                         if len(jobs) >= max_results:
                             break
@@ -107,7 +117,11 @@ class LinkedInConnector(BaseConnector):
 
     def normalize(self, raw: dict) -> Job:
         """Convert raw LinkedIn dictionary into standard Job model."""
-        return Job(
+        raw_date = raw.get("date") or raw.get("posted_at")
+        from intelligence.freshness.gate import parse_timestamp, FreshnessGate
+        posted_dt, conf, _ = parse_timestamp(raw_date)
+
+        job = Job(
             id=raw.get("id") or str(uuid.uuid4()),
             source=JobSource.LINKEDIN,
             source_id=raw.get("source_id", str(uuid.uuid4())),
@@ -117,8 +131,14 @@ class LinkedInConnector(BaseConnector):
             location=raw.get("location", self.default_location),
             description=raw.get("description", ""),
             apply_url=raw.get("apply_url", ""),
+            posted_at=posted_dt,
+            posted_date=posted_dt,
+            freshness_confidence=conf,
+            freshness_source="linkedin",
             raw_data=raw,
         )
+        gate = FreshnessGate()
+        return gate.evaluate_job(job)
 
     async def fetch(self, source_id: str) -> Job:
         """Fetch single LinkedIn job detail."""

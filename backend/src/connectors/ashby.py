@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/src/connectors/ashby.py
 
 AshbyConnector -- fetches public job listings from Ashby's job board API.
@@ -31,7 +31,14 @@ class AshbyNormalizer:
         apply_url = posting.get("applyUrl") or posting.get("jobUrl") or ""
         hosted_url = posting.get("jobUrl", "") or apply_url
 
-        return Job(
+        published_raw = posting.get("publishedDate") or posting.get("publishedAt") or posting.get("createdAt")
+        updated_raw = posting.get("updatedAt")
+
+        from intelligence.freshness.gate import parse_timestamp, FreshnessGate
+        posted_dt, conf, anomaly = parse_timestamp(published_raw)
+        updated_dt, _, _ = parse_timestamp(updated_raw)
+
+        job = Job(
             source=JobSource.ASHBY,
             source_id=str(posting.get("id", "")),
             source_url=hosted_url,
@@ -40,8 +47,15 @@ class AshbyNormalizer:
             location=location_raw,
             description=description,
             apply_url=apply_url,
+            posted_at=posted_dt,
+            posted_date=posted_dt,
+            last_updated_at=updated_dt,
+            freshness_confidence=conf,
+            freshness_source="ashby",
             raw_data=posting,
         )
+        gate = FreshnessGate()
+        return gate.evaluate_job(job)
 
 
 class AshbyConnector(BaseConnector):
