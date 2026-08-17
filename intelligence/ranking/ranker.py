@@ -6,6 +6,8 @@ Computes overall fit score, confidence rating, missing skills, and application r
 """
 from __future__ import annotations
 
+import re
+from typing import Optional, Any
 from pydantic import BaseModel, Field
 
 from core.models.candidate_profile import CandidateProfile
@@ -208,5 +210,48 @@ class RankingAgent:
         return 1.0 if location_matched else 0.0
 
     def _compute_seniority_score(self, job: Job) -> float:
-        exp_req = job.experience_years if job.experience_years is not None else 1.0
-        return 1.0 if exp_req <= self.profile.max_experience_years else 0.4
+        """
+        Computes seniority match score (0.0 to 1.0) evaluating both explicit experience
+        numbers and title seniority keywords against the candidate's profile limit.
+        """
+        title_lower = (job.title or "").lower()
+        desc_lower = (job.description or "").lower()
+        full_text = f"{title_lower}\n{desc_lower}"
+        
+        # 1. Hard senior title prefixes
+        hard_senior_keywords = [
+            "senior", "sr.", "sr ", "staff", "principal", "lead", "director",
+            "manager", "head of", "vp", "vice president", "fellow", "expert", "distinguished"
+        ]
+        has_hard_senior_title = any(
+            re.search(rf"\b{re.escape(kw)}\b", title_lower) for kw in hard_senior_keywords
+        )
+
+        # 2. Architect title (Seniority Risk)
+        has_architect_title = bool(re.search(r"\barchitect\b", title_lower))
+
+        # 3. Numeric experience check
+        exp_req = job.experience_years
+        if exp_req is None:
+            # Check for explicit experience strings in full text (e.g., "5+ years", "6-8 yrs")
+            if any(k in full_text for k in ["5+", "6+", "7+", "8+", "10+", "5-8 yrs", "5-7 yrs", "6-10 yrs", "7-10 years", "5+ yrs", "5+ years", "8+ years"]):
+                exp_req = 5.0
+            elif any(k in full_text for k in ["3-5 yrs", "3-5 years", "4+ yrs", "4+ years"]):
+                exp_req = 4.0
+            else:
+                exp_req = 1.0
+
+        # Evaluate against candidate max experience (e.g. 3 years)
+        if exp_req > self.profile.max_experience_years:
+            return 0.3
+
+        if has_hard_senior_title and self.profile.max_experience_years <= 3:
+            return 0.3
+
+        if has_architect_title:
+            # If architect title has senior prefix or requires 4+ yrs -> mismatch
+            if has_hard_senior_title or exp_req >= 4:
+                return 0.3
+            return 0.8  # early-career / generic architect title
+
+        return 1.0

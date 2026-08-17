@@ -30,5 +30,6 @@ def test_skill_match_scorer_full_match():
 def test_skill_match_scorer_empty_job_skills():
     scorer = SkillMatchScorer()
     result = scorer.score([], ["Python"])
-    assert result.overall_score == 1.0
+    assert result.overall_score == 0.0
+    assert result.has_technical_requirements is False
     assert result.missing_skills == []

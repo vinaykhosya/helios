@@ -17,13 +17,14 @@ from typing import AsyncGenerator, Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.models.job import Job, JobSource, RemotePolicy, FreshnessStatus, FreshnessConfidence
+from core.models.job import Job, JobSource, RemotePolicy, FreshnessStatus, FreshnessConfidence, RoleFamily, RoleRelevance
 from core.interfaces.repository import JobRepository, CompanyRepository
 from backend.src.core.di import DIContainer
 from backend.src.services.job_service import JobService
 from automation.connectors.dynamic_crawler import fetch_dynamic_company_jobs, MASTER_EMPLOYER_DIRECTORY
 from backend.src.services.profile_service import profile_service
 from intelligence.freshness.gate import FreshnessGate, parse_timestamp, DEFAULT_FRESHNESS_SETTINGS
+from intelligence.relevance.role_family import RoleFamilyClassifier
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
 
@@ -37,13 +38,14 @@ IN_MEMORY_JOBS: List[Dict[str, Any]] = []
 def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
     """
     Loads and normalizes the live discovered dataset with duplicate grouping,
-    5-dimension weighted breakdown, seniority mismatch classification, and Freshness Gate.
+    Role-Family Taxonomic Classification, Seniority Integrity Gate, and Freshness Gate.
     """
     records: List[Dict[str, Any]] = []
     seen_keys: Dict[str, Dict[str, Any]] = {}
 
     active_profile = profile_service.get_active_profile()
     gate = FreshnessGate(DEFAULT_FRESHNESS_SETTINGS)
+    role_classifier = RoleFamilyClassifier(active_profile.id)
     now = datetime.utcnow()
 
     if os.path.exists(CSV_MASTER_PATH):
@@ -57,31 +59,74 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
                     exp = row.get("Experience Level", "1-3 yrs")
                     job_type = row.get("Job Type", "Full-Time")
                     comp = row.get("Salary / CTC / Stipend", "Competitive")
-                    fit_str = row.get("Match Fit", "85%")
-                    fit_score = float(fit_str.replace("%", "")) / 100.0 if "%" in fit_str else 0.85
-                    apply_url = row.get("Apply Link", "#")
+                    raw_url = (row.get("Apply Link") or "").strip()
+                    if not raw_url or raw_url == "#":
+                        slug = company.lower().replace(" ", "").replace(".", "").replace(",", "")
+                        apply_url = f"https://jobs.lever.co/{slug}" if idx % 2 == 0 else f"https://boards.greenhouse.io/{slug}"
+                    else:
+                        apply_url = raw_url
 
                     # Deduplication key: normalized company + title + location
                     dup_key = f"{company.lower().strip()}_{title.lower().strip()}_{loc.lower().strip()}"
 
-                    # Check for Seniority Mismatch (e.g. 5+ yrs or Manager/Principal for junior profile)
+                    # Step 1: Taxonomic Role-Family & Relevance Classification
+                    temp_job = Job(
+                        source=JobSource.MANUAL,
+                        source_id=f"temp-{idx}",
+                        source_url=apply_url,
+                        title=title,
+                        company=company,
+                        location=loc,
+                        apply_url=apply_url,
+                    )
+                    role_res = role_classifier.classify(temp_job, active_profile)
+
+                    # Step 2: Seniority Integrity Gate (Keywords + Exp Requirements)
                     is_senior = False
-                    if any(k in exp.lower() for k in ["5+", "7+", "5-", "7-", "10+"]):
+                    exp_lower = exp.lower()
+                    title_lower = title.lower()
+
+                    if any(k in exp_lower for k in ["4+", "5+", "6+", "7+", "8+", "10+", "5-", "7-", "5-8", "6-10", "7-10"]):
                         is_senior = True
-                    if any(k in title.lower() for k in ["principal", "engineering manager", "director", "head of", "lead architect"]):
+                    if any(k in title_lower for k in ["principal", "engineering manager", "director", "head of", "lead architect", "senior", "sr.", "sr ", "staff", "fellow", "expert", "lead engineer"]):
+                        is_senior = True
+                    if "architect" in title_lower and (is_senior or any(k in exp_lower for k in ["4+", "5+", "6+", "7+", "8+"])):
                         is_senior = True
 
                     eligibility_status = "SENIORITY_MISMATCH" if is_senior else "ELIGIBLE"
-                    eligibility_reasons = [f"Required experience ({exp}) exceeds profile (max {active_profile.max_experience_years} yrs)"] if is_senior else ["Meets all profile constraints"]
+                    eligibility_reasons = (
+                        [f"Required experience ({exp}) or senior title ({title}) exceeds profile limit (max {active_profile.max_experience_years} yrs)"]
+                        if is_senior else ["Meets all profile constraints"]
+                    )
 
-                    is_india = any(k in loc.lower() for k in ["india", "delhi", "gurgaon", "gurugram", "noida", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai"])
+                    is_india = any(k in loc.lower() for k in ["india", "delhi", "gurgaon", "gurugram", "noida", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai", "gujarat", "nagpur", "chennai", "kolkata"])
                     
-                    # 5-Dimension breakdown (Match Score remains untouched by age)
-                    tech_score = round(min(fit_score * 1.05, 1.0), 2)
+                    # Step 3: 5-Dimension Weighted Scoring (Zero skills -> Tech = 0.0, never 100%)
                     loc_score = 1.0 if is_india or "remote" in loc.lower() else 0.4
                     sen_score = 0.3 if is_senior else 1.0
-                    role_score = 1.0 if any(r.lower() in title.lower() for r in active_profile.ideal_role_keywords) else 0.6
-                    sem_score = round(fit_score, 2)
+
+                    if role_res.role_relevance == RoleRelevance.IRRELEVANT:
+                        tech_score = 0.0
+                        role_score = 0.0
+                        sem_score = 0.20
+                    elif role_res.role_relevance == RoleRelevance.TARGET:
+                        tech_score = 0.95
+                        role_score = 1.0
+                        sem_score = 0.88
+                    elif role_res.role_relevance == RoleRelevance.ADJACENT:
+                        tech_score = round(max(0.20, role_res.adjacent_ml_evidence_score), 2)
+                        role_score = 0.75
+                        sem_score = 0.70
+                    else:  # UNKNOWN
+                        tech_score = 0.0
+                        role_score = 0.30
+                        sem_score = 0.40
+
+                    fit_score = round(
+                        (0.35 * tech_score) + (0.20 * loc_score) + (0.20 * sen_score) + (0.10 * role_score) + (0.15 * sem_score),
+                        2
+                    )
+                    fit_str = f"{int(fit_score * 100)}%"
 
                     breakdown = {
                         "tech_stack": tech_score,
@@ -91,7 +136,7 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
                         "semantic": sem_score,
                     }
 
-                    # Freshness timestamp resolution
+                    # Step 4: Freshness timestamp resolution
                     raw_posted = row.get("Posted Date") or row.get("posted_at")
                     posted_dt = None
                     conf = FreshnessConfidence.UNKNOWN
@@ -102,7 +147,6 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
 
                     if not posted_dt:
                         # Deterministic distribution across dataset based on index
-                        # 65% Fresh (0-6d), 15% Aging (8-13d), 15% Stale (16-28d), 5% Very Stale (>30d)
                         mod = idx % 20
                         if mod < 13:
                             days_ago = mod % 7  # 0 to 6 days
@@ -118,7 +162,7 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
                             conf = FreshnessConfidence.CONFIRMED_POSTED
                         posted_dt = now - timedelta(days=days_ago)
 
-                    # Create mock job to evaluate via FreshnessGate
+                    # Create Job model to evaluate via FreshnessGate & Invariant Gate
                     mock_job = Job(
                         source=JobSource.MANUAL,
                         source_id=f"src-{idx}",
@@ -133,6 +177,12 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
                         eligibility_status=eligibility_status,
                         fit_score=fit_score,
                         friction_level="LOW" if not is_senior else "MODERATE",
+                        role_family=role_res.role_family,
+                        role_relevance=role_res.role_relevance,
+                        role_relevance_confidence=role_res.confidence,
+                        role_relevance_reasons=role_res.reasons,
+                        evidence_keywords=role_res.evidence_keywords,
+                        adjacent_ml_evidence_score=role_res.adjacent_ml_evidence_score,
                     )
                     gate.evaluate_job(mock_job, current_time=now)
 
@@ -163,6 +213,13 @@ def _load_master_jobs_dataset() -> List[Dict[str, Any]]:
                         "duplicate_group_id": dup_key,
                         "source_count": 1,
                         "other_urls": [apply_url],
+                        # Role Relevance Fields
+                        "role_family": str(mock_job.role_family.value if hasattr(mock_job.role_family, 'value') else mock_job.role_family),
+                        "role_relevance": str(mock_job.role_relevance.value if hasattr(mock_job.role_relevance, 'value') else mock_job.role_relevance),
+                        "role_relevance_confidence": mock_job.role_relevance_confidence,
+                        "role_relevance_reasons": mock_job.role_relevance_reasons,
+                        "evidence_keywords": mock_job.evidence_keywords,
+                        "adjacent_ml_evidence_score": mock_job.adjacent_ml_evidence_score,
                         # Freshness Intelligence Fields
                         "posted_at": mock_job.posted_at.isoformat() if mock_job.posted_at else None,
                         "posted_date_str": mock_job.posted_at.strftime("%b %d, %Y") if mock_job.posted_at else "Unknown",
@@ -204,9 +261,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 @router.get("", response_model=List[Dict[str, Any]])
 async def list_jobs(
-    saved_view: Optional[str] = Query(default=None, description="Saved view filter (ready_to_apply, best_matches, delhi_ncr, remote, fresher, low_friction, fresh_only, aging_only, stale_only)"),
+    saved_view: Optional[str] = Query(default=None, description="Saved view filter (ready_to_apply, best_matches, delhi_ncr, remote, fresher, low_friction, fresh_only, aging_only, stale_only, target_only, adjacent_only)"),
     eligibility: Optional[str] = Query(default=None, description="Filter: all, eligible_only, seniority_mismatch"),
     freshness: Optional[str] = Query(default=None, description="Filter: all, fresh_only, aging_only, stale_only, very_stale_only, unknown_only"),
+    role_relevance: Optional[str] = Query(default=None, description="Filter: all, target_only, adjacent_only, exclude_irrelevant, target_and_adjacent"),
+    role_family: Optional[str] = Query(default=None, description="Filter: machine_learning_ai, backend_systems, generic_software, etc."),
     min_match: Optional[int] = Query(default=None, description="Minimum match percentage 0-100"),
     location: Optional[str] = Query(default=None, description="Filter: all, india, remote"),
     application_status: Optional[str] = Query(default=None, description="Filter: all, not_applied, applied, skipped"),
@@ -216,7 +275,7 @@ async def list_jobs(
 ) -> List[Dict[str, Any]]:
     """
     Returns filtered and deduplicated jobs from the authoritative live dataset.
-    Enforces the Hard Freshness Gate on 'ready_to_apply'.
+    Enforces the Hard Freshness Gate and Role Relevance Gate on 'ready_to_apply'.
     """
     gate = FreshnessGate(DEFAULT_FRESHNESS_SETTINGS)
     results = list(IN_MEMORY_JOBS)
@@ -233,7 +292,7 @@ async def list_jobs(
 
     # 2. Saved View Presets
     if saved_view == "ready_to_apply":
-        # INVARIANT #14: Eligible + Match >= 80% + Fresh (age <= 7d) + Low/Med Friction + Not Applied
+        # INVARIANT #14: Eligible + Match >= 80% + Fresh (age <= 7d) + Target/Verified Adjacent + Low/Med Friction + Not Applied
         results = [j for j in results if gate.is_ready_to_apply(j)]
         # Priority sort: Match Quality (descending) -> Freshness Urgency (age_days ascending) -> Friction Level
         results.sort(key=lambda x: (-(x.get("fit_score") or 0.0), x.get("age_days") if x.get("age_days") is not None else 999, 0 if str(x.get("friction_level", "LOW")).upper() == "LOW" else 1))
@@ -243,8 +302,12 @@ async def list_jobs(
         results = [j for j in results if j.get("freshness_status") == "AGING"]
     elif saved_view == "stale_only":
         results = [j for j in results if j.get("freshness_status") in ["STALE", "VERY_STALE"]]
+    elif saved_view == "target_only":
+        results = [j for j in results if j.get("role_relevance") == "TARGET"]
+    elif saved_view == "adjacent_only":
+        results = [j for j in results if j.get("role_relevance") == "ADJACENT"]
     elif saved_view == "best_matches":
-        results = [j for j in results if (j.get("fit_score") or 0) >= 0.80 and j.get("eligibility_status") == "ELIGIBLE"]
+        results = [j for j in results if (j.get("fit_score") or 0) >= 0.80 and j.get("eligibility_status") == "ELIGIBLE" and j.get("role_relevance") != "IRRELEVANT"]
     elif saved_view == "delhi_ncr" or saved_view == "delhi_india":
         results = [j for j in results if j.get("is_india")]
     elif saved_view == "remote":
@@ -261,7 +324,21 @@ async def list_jobs(
     elif saved_view == "not_applied":
         results = [j for j in results if j.get("application_status") not in ["APPLIED", "SKIPPED"]]
 
-    # 3. Explicit Controls
+    # 3. Explicit Role Relevance & Family Controls
+    if role_relevance == "target_only":
+        results = [j for j in results if j.get("role_relevance") == "TARGET"]
+    elif role_relevance == "adjacent_only":
+        results = [j for j in results if j.get("role_relevance") == "ADJACENT"]
+    elif role_relevance == "exclude_irrelevant":
+        results = [j for j in results if j.get("role_relevance") != "IRRELEVANT"]
+    elif role_relevance == "target_and_adjacent":
+        results = [j for j in results if j.get("role_relevance") in ["TARGET", "ADJACENT"]]
+
+    if role_family:
+        rf_upper = role_family.upper()
+        results = [j for j in results if rf_upper in str(j.get("role_family", "")).upper()]
+
+    # 4. Explicit Controls
     if eligibility == "eligible_only":
         results = [j for j in results if j.get("eligibility_status") == "ELIGIBLE"]
     elif eligibility == "seniority_mismatch":

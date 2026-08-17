@@ -27,6 +27,8 @@ CSV_REMOTE_PATH = os.path.join(BASE_DIR, "data", "jobs_remote_international.csv"
 FIELDNAMES = [
     "Company",
     "Role / Title",
+    "Role Family",
+    "Role Relevance",
     "Job Type",
     "Experience Level",
     "Location / Remote",
@@ -44,7 +46,7 @@ FIELDNAMES = [
 def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Regenerates and writes data/helios_jobs_two_tabs.xlsx and data/helios_live_jobs.csv
-    with Freshness Intelligence and provenance fields.
+    with Role-Family Relevance, Freshness Intelligence, and provenance fields.
     """
     os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
     gate = FreshnessGate(DEFAULT_FRESHNESS_SETTINGS)
@@ -72,12 +74,24 @@ def sync_local_excel_and_csv(jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
             else "⚪ UNKNOWN")))
         )
 
+        role_rel = str(j.get("role_relevance", "UNKNOWN")).replace("RoleRelevance.", "")
+        role_rel_badge = (
+            "🟢 TARGET" if role_rel == "TARGET"
+            else ("🟡 ADJACENT" if role_rel == "ADJACENT"
+            else ("🔴 IRRELEVANT" if role_rel == "IRRELEVANT"
+            else "⚪ UNKNOWN"))
+        )
+
+        role_fam = str(j.get("role_family", "OTHER_NON_TECH")).replace("RoleFamily.", "")
+
         is_ready = gate.is_ready_to_apply(j)
         ready_badge = "✅ YES" if is_ready else "❌ NO"
 
         row = {
             "Company": j.get("company") or j.get("Company") or "Unknown",
             "Role / Title": j.get("title") or j.get("Role / Title") or "Software Engineer",
+            "Role Family": role_fam,
+            "Role Relevance": role_rel_badge,
             "Job Type": j.get("job_type") or j.get("Job Type") or "Full-Time",
             "Experience Level": j.get("experience_years") or j.get("Experience Level") or "1-3 yrs",
             "Location / Remote": j.get("location") or j.get("Location / Remote") or "Remote",

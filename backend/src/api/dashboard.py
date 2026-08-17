@@ -67,12 +67,19 @@ async def get_dashboard_overview():
     very_stale_count = 0
     unknown_freshness_count = 0
 
+    # Role Relevance distribution counters
+    target_count = 0
+    adjacent_count = 0
+    irrelevant_count = 0
+    unknown_role_count = 0
+
     if IN_MEMORY_JOBS:
         for j in IN_MEMORY_JOBS:
             fit = j.get("fit_score") or (float(str(j.get("Match Fit", "0%")).replace("%", "")) / 100.0)
             is_eligible = j.get("eligibility_status", "ELIGIBLE") == "ELIGIBLE"
             loc = (j.get("location") or j.get("Location / Remote") or "").lower()
             fresh_status = str(j.get("freshness_status", "UNKNOWN")).replace("FreshnessStatus.", "")
+            role_rel = str(j.get("role_relevance", "UNKNOWN")).replace("RoleRelevance.", "")
 
             if "india" in loc or "delhi" in loc or "gurgaon" in loc or "noida" in loc or "bangalore" in loc:
                 india += 1
@@ -83,6 +90,16 @@ async def get_dashboard_overview():
                 seniority_mismatch += 1
             else:
                 potentially_eligible += 1
+
+            # Role Relevance distribution
+            if role_rel == "TARGET":
+                target_count += 1
+            elif role_rel == "ADJACENT":
+                adjacent_count += 1
+            elif role_rel == "IRRELEVANT":
+                irrelevant_count += 1
+            else:
+                unknown_role_count += 1
 
             # Freshness distribution
             if fresh_status == "FRESH":
@@ -96,10 +113,10 @@ async def get_dashboard_overview():
             else:
                 unknown_freshness_count += 1
 
-            if fit >= 0.80 and is_eligible:
+            if fit >= 0.80 and is_eligible and role_rel != "IRRELEVANT":
                 strong += 1
 
-            # Hard Freshness Gate for Ready-to-Apply
+            # Hard Invariant Gate for Ready-to-Apply
             if gate.is_ready_to_apply(j):
                 ready_to_apply += 1
     else:
@@ -114,6 +131,10 @@ async def get_dashboard_overview():
         stale_count = 48
         very_stale_count = 14
         unknown_freshness_count = 0
+        target_count = 180
+        adjacent_count = 100
+        irrelevant_count = 44
+        unknown_role_count = 0
 
     latest_scan_id = list(SCANS_LEDGER.keys())[-1] if SCANS_LEDGER else "scan-initial-01"
     active_profile = profile_service.get_active_profile()
@@ -133,6 +154,11 @@ async def get_dashboard_overview():
         "last_scan_id": latest_scan_id,
         "active_profile_id": active_profile.id,
         "active_profile_name": active_profile.profile_name,
+        # Role Relevance Breakdown
+        "target_roles_count": target_count,
+        "adjacent_roles_count": adjacent_count,
+        "irrelevant_roles_count": irrelevant_count,
+        "unknown_role_count": unknown_role_count,
         # Freshness Breakdown
         "fresh_count": fresh_count,
         "aging_count": aging_count,

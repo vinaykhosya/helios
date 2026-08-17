@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS helios.jobs (
     posted_date             TIMESTAMPTZ,
     deadline                TIMESTAMPTZ,
     apply_url               TEXT,
+    role_family             TEXT,
+    role_relevance          TEXT        DEFAULT 'UNKNOWN',
+    role_relevance_confidence NUMERIC(4,2) DEFAULT 0.00,
+    adjacent_ml_evidence_score NUMERIC(4,2) DEFAULT 0.00,
 
     -- Intelligence
     is_active               BOOLEAN     DEFAULT TRUE,

@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, JSON, DateTime, ARRAY, ForeignKey, Integer, Boolean
+from sqlalchemy import String, JSON, DateTime, ARRAY, ForeignKey, Integer, Boolean, Float
 from database.models.base import Base, Vector
 
 
@@ -62,6 +62,10 @@ class JobORM(Base):
     freshness_confidence: Mapped[str] = mapped_column(String, default="UNKNOWN")
     freshness_source: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     date_anomaly: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    role_family: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    role_relevance: Mapped[str] = mapped_column(String, default="UNKNOWN")
+    role_relevance_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    adjacent_ml_evidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     deadline: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     apply_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)

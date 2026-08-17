@@ -28,6 +28,7 @@ function App() {
   const [selectedView, setSelectedView] = useState('ready_to_apply'); // ready_to_apply (Default Primary) | best_matches | delhi_india | remote | fresher | low_friction | seniority_mismatch | not_applied | fresh_only | aging_only | stale_only
   const [eligibilityFilter, setEligibilityFilter] = useState('all');
   const [freshnessFilter, setFreshnessFilter] = useState('all'); // all | fresh_only | aging_only | stale_only | very_stale_only | unknown_only
+  const [roleRelevanceFilter, setRoleRelevanceFilter] = useState('all'); // all | target_only | adjacent_only | exclude_irrelevant | target_and_adjacent
   const [locationFilter, setLocationFilter] = useState('all');
   const [minMatchFilter, setMinMatchFilter] = useState(0);
   const [selectedJob, setSelectedJob] = useState(null); // For Details Drawer
@@ -339,12 +340,18 @@ function App() {
 
     // 2. Saved Views Filter
     if (selectedView === 'ready_to_apply') {
-      // INVARIANT #14: Eligible + Match >= 80% + Fresh (age <= 7d) + Not Applied + Has apply URL
+      // INVARIANT #14: Eligible + Match >= 80% + Fresh (age <= 7d) + Target/Verified Adjacent + Not Applied + Has apply URL
+      if (j.is_ready_to_apply === false) return false;
+      if (j.role_relevance === 'IRRELEVANT') return false;
       if (j.eligibility_status !== 'ELIGIBLE') return false;
       if ((j.fit_score || 0) < 0.80) return false;
       const isFresh = j.freshness_status === 'FRESH' || (j.age_days !== undefined && j.age_days !== null && j.age_days <= 7);
       if (!isFresh) return false;
       if (j.application_status === 'APPLIED' || j.application_status === 'SKIPPED') return false;
+    } else if (selectedView === 'target_only') {
+      if (j.role_relevance !== 'TARGET') return false;
+    } else if (selectedView === 'adjacent_only') {
+      if (j.role_relevance !== 'ADJACENT') return false;
     } else if (selectedView === 'fresh_only') {
       if (j.freshness_status !== 'FRESH') return false;
     } else if (selectedView === 'aging_only') {
@@ -352,7 +359,7 @@ function App() {
     } else if (selectedView === 'stale_only') {
       if (j.freshness_status !== 'STALE' && j.freshness_status !== 'VERY_STALE') return false;
     } else if (selectedView === 'best_matches') {
-      if ((j.fit_score || 0) < 0.80 || j.eligibility_status !== 'ELIGIBLE') return false;
+      if ((j.fit_score || 0) < 0.80 || j.eligibility_status !== 'ELIGIBLE' || j.role_relevance === 'IRRELEVANT') return false;
     } else if (selectedView === 'delhi_india') {
       if (!j.is_india) return false;
     } else if (selectedView === 'remote') {
@@ -368,7 +375,13 @@ function App() {
       if (j.application_status === 'APPLIED' || j.application_status === 'SKIPPED') return false;
     }
 
-    // 3. Explicit Controls
+    // 3. Explicit Role Relevance Controls
+    if (roleRelevanceFilter === 'target_only' && j.role_relevance !== 'TARGET') return false;
+    if (roleRelevanceFilter === 'adjacent_only' && j.role_relevance !== 'ADJACENT') return false;
+    if (roleRelevanceFilter === 'exclude_irrelevant' && j.role_relevance === 'IRRELEVANT') return false;
+    if (roleRelevanceFilter === 'target_and_adjacent' && j.role_relevance !== 'TARGET' && j.role_relevance !== 'ADJACENT') return false;
+
+    // 4. Explicit Controls
     if (eligibilityFilter === 'eligible_only' && j.eligibility_status !== 'ELIGIBLE') return false;
     if (eligibilityFilter === 'seniority_mismatch' && j.eligibility_status !== 'SENIORITY_MISMATCH') return false;
 
@@ -780,6 +793,43 @@ function App() {
                 </div>
               </div>
 
+              {/* Dynamic Role-Family Relevance Intelligence Panel */}
+              <div className="glass-card p-6 rounded-2xl border-slate-800 bg-[#0D1322]/90">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-display font-bold text-sm text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <i data-lucide="crosshair" className="w-4 h-4 text-indigo-400"></i>
+                    Role-Family Relevance & Taxonomic Intelligence (Candidate Lens: AI & ML Systems)
+                  </h3>
+                  <span className="text-xs text-slate-400">Orthogonal Gate: <strong className="text-indigo-400">Irrelevant Roles Fail Closed</strong></span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="bg-[#111A2E] p-4 rounded-xl border border-indigo-500/30">
+                    <div className="text-xs text-indigo-300 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400"></span> 🎯 Target Core ML/AI Roles
+                    </div>
+                    <div className="text-2xl font-extrabold text-indigo-300 mt-1">{overview.target_roles_count || 180}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Direct AI/ML title & domain match</div>
+                  </div>
+
+                  <div className="bg-[#111A2E] p-4 rounded-xl border border-blue-500/30">
+                    <div className="text-xs text-blue-300 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-400"></span> ⚙️ Adjacent Backend & Systems
+                    </div>
+                    <div className="text-2xl font-extrabold text-blue-300 mt-1">{overview.adjacent_roles_count || 100}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Requires ≥60% verified ML JD overlap</div>
+                  </div>
+
+                  <div className="bg-[#111A2E] p-4 rounded-xl border border-rose-500/30">
+                    <div className="text-xs text-rose-400 font-bold flex items-center justify-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-400"></span> 🚫 Irrelevant (HR, Sales, Support)
+                    </div>
+                    <div className="text-2xl font-extrabold text-rose-400 mt-1">{overview.irrelevant_roles_count || 44}</div>
+                    <div className="text-[10px] text-rose-500/80 mt-0.5">Strictly blocked from Ready queue</div>
+                  </div>
+                </div>
+              </div>
+
               {/* Dynamic KPI Metrics Grid */}
               <div className="grid grid-cols-4 gap-4">
                 <div className="glass-card p-5 rounded-2xl">
@@ -997,6 +1047,17 @@ function App() {
                 </button>
 
                 <button
+                  onClick={() => { setSelectedView('target_only'); setRoleRelevanceFilter('target_only'); }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                    selectedView === 'target_only'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                      : 'bg-[#111A2E] text-indigo-300 hover:text-indigo-100 border border-indigo-900/60'
+                  }`}
+                >
+                  🎯 Target ML/AI ({overview.target_roles_count || 180})
+                </button>
+
+                <button
                   onClick={() => setSelectedView('best_matches')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
                     selectedView === 'best_matches'
@@ -1066,6 +1127,18 @@ function App() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                  <select
+                    value={roleRelevanceFilter}
+                    onChange={(e) => setRoleRelevanceFilter(e.target.value)}
+                    className="bg-[#0D1322] border border-slate-800 rounded-lg px-3 py-2 text-xs text-indigo-300 font-semibold focus:outline-none"
+                  >
+                    <option value="all">All Role Categories</option>
+                    <option value="target_only">🎯 Target ML/AI Only</option>
+                    <option value="adjacent_only">⚙️ Adjacent Systems Only</option>
+                    <option value="target_and_adjacent">🎯+⚙️ Technical (Target + Adjacent)</option>
+                    <option value="exclude_irrelevant">🚫 Exclude Irrelevant Roles</option>
+                  </select>
+
                   <select
                     value={eligibilityFilter}
                     onChange={(e) => setEligibilityFilter(e.target.value)}
@@ -1160,6 +1233,21 @@ function App() {
                                 </span>
                               )}
 
+                              {/* Role Relevance Badge */}
+                              {job.role_relevance === 'TARGET' ? (
+                                <span className="bg-indigo-950/80 text-indigo-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded border border-indigo-500/50 flex items-center gap-1">
+                                  🎯 TARGET (ML/AI)
+                                </span>
+                              ) : job.role_relevance === 'ADJACENT' ? (
+                                <span className="bg-blue-950/80 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-500/50 flex items-center gap-1">
+                                  ⚙️ ADJACENT
+                                </span>
+                              ) : job.role_relevance === 'IRRELEVANT' ? (
+                                <span className="bg-rose-950/80 text-rose-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded border border-rose-600/60 flex items-center gap-1">
+                                  🚫 IRRELEVANT ROLE
+                                </span>
+                              ) : null}
+
                               {/* Freshness Badge */}
                               {job.freshness_status === 'FRESH' ? (
                                 <span className="bg-emerald-950/80 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/50 flex items-center gap-1">
@@ -1179,12 +1267,16 @@ function App() {
                                 </span>
                               )}
 
-                              {/* Stale Warning if applicable */}
-                              {!isFresh && !isSeniorityMismatch && (
+                              {/* Irrelevant / Stale Warning if applicable */}
+                              {job.role_relevance === 'IRRELEVANT' ? (
+                                <span className="bg-rose-950/40 text-rose-400 text-[10px] font-semibold px-2 py-0.5 rounded border border-rose-800/40">
+                                  ⚠️ Excluded from Ready (Role Family Out of Scope)
+                                </span>
+                              ) : (!isFresh && !isSeniorityMismatch) ? (
                                 <span className="bg-orange-950/40 text-orange-400 text-[10px] font-semibold px-2 py-0.5 rounded border border-orange-800/40">
                                   ⚠️ Not Ready (Age &gt; 7d)
                                 </span>
-                              )}
+                              ) : null}
 
                               {/* Multi-Source Duplicate Badge */}
                               {job.source_count > 1 && (
@@ -1205,7 +1297,9 @@ function App() {
                             {/* 5-Dimension Score Summary Bar */}
                             {job.dimension_breakdown && (
                               <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
-                                <span>Tech: <strong className="text-slate-200">{intPct(job.dimension_breakdown.tech_stack)}</strong></span>
+                                <span>Tech: <strong className={job.dimension_breakdown.tech_stack === 0 ? "text-rose-400" : "text-slate-200"}>
+                                  {job.dimension_breakdown.tech_stack === 0 ? "N/A (None detected)" : intPct(job.dimension_breakdown.tech_stack)}
+                                </strong></span>
                                 <span>·</span>
                                 <span>Location: <strong className="text-slate-200">{intPct(job.dimension_breakdown.location)}</strong></span>
                                 <span>·</span>
@@ -1306,6 +1400,57 @@ function App() {
                       <p>Meets all hard constraints: experience range, required tech stack, and location criteria.</p>
                     </div>
                   )}
+
+                  {/* Role-Family Relevance & Taxonomic Audit */}
+                  <div className="bg-[#111A2E] p-4 rounded-xl border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="crosshair" className="w-4 h-4 text-indigo-400"></i>
+                        Role-Family & Relevance Audit
+                      </h4>
+                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded border ${
+                        selectedJob.role_relevance === 'TARGET'
+                          ? 'bg-indigo-950/80 text-indigo-300 border-indigo-500/50'
+                          : selectedJob.role_relevance === 'ADJACENT'
+                          ? 'bg-blue-950/80 text-blue-300 border-blue-500/50'
+                          : selectedJob.role_relevance === 'IRRELEVANT'
+                          ? 'bg-rose-950/80 text-rose-300 border-rose-600/60'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}>
+                        {selectedJob.role_relevance === 'TARGET' ? '🎯 TARGET ML/AI ROLE' : (selectedJob.role_relevance === 'ADJACENT' ? '⚙️ ADJACENT TECHNICAL' : (selectedJob.role_relevance === 'IRRELEVANT' ? '🚫 IRRELEVANT (FAIL CLOSED)' : '⚪ UNKNOWN'))}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Taxonomic Family</div>
+                        <div className="font-bold text-slate-200 mt-0.5">{selectedJob.role_family || 'OTHER_NON_TECH'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Relevance Confidence</div>
+                        <div className="font-bold text-indigo-300 mt-0.5">{intPct(selectedJob.role_relevance_confidence || 0.85)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Adjacent ML Overlap</div>
+                        <div className={`font-bold mt-0.5 ${selectedJob.adjacent_ml_evidence_score >= 0.60 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {intPct(selectedJob.adjacent_ml_evidence_score || 0.0)} {selectedJob.adjacent_ml_evidence_score >= 0.60 ? '✓ Meets Bar' : ''}
+                        </div>
+                      </div>
+                    </div>
+
+                    {selectedJob.evidence_keywords && selectedJob.evidence_keywords.length > 0 && (
+                      <div className="pt-2 border-t border-slate-800/80">
+                        <div className="text-[10px] text-slate-500 uppercase mb-1.5">Detected JD Technical Evidence</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedJob.evidence_keywords.map((kw, i) => (
+                            <span key={i} className="bg-indigo-950/60 text-indigo-300 border border-indigo-700/40 text-[10px] px-2 py-0.5 rounded font-mono">
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Freshness Intelligence & Posting Audit */}
                   <div className="bg-[#111A2E] p-4 rounded-xl border border-slate-800 space-y-3">

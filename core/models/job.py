@@ -69,6 +69,28 @@ class FreshnessConfidence(str, Enum):
     UNKNOWN = "UNKNOWN"                        # No reliable date available
 
 
+class RoleFamily(str, Enum):
+    """Taxonomic job family classification."""
+    MACHINE_LEARNING_AI = "MACHINE_LEARNING_AI"      # Core ML/AI, Deep Learning, NLP, CV, LLM, MLOps
+    BACKEND_SYSTEMS = "BACKEND_SYSTEMS"              # Backend, Distributed Systems, Python/Go/C++ Systems
+    DATA_ENGINEERING = "DATA_ENGINEERING"            # Data Platform, ETL, Analytics Engineering
+    GENERIC_SOFTWARE = "GENERIC_SOFTWARE"            # General Software Engineer, Full Stack, Frontend
+    SOLUTIONS_PRE_SALES = "SOLUTIONS_PRE_SALES"      # Solutions Architect, Partner Engineer, Pre-Sales
+    RECRUITING_HR = "RECRUITING_HR"                  # Recruiter, Talent Acquisition, Human Resources
+    CUSTOMER_SUPPORT = "CUSTOMER_SUPPORT"            # Customer Support, Help Desk, Service Rep
+    SALES_MARKETING = "SALES_MARKETING"              # Account Exec, BDM, Marketing, Growth
+    MANAGEMENT_EXECUTIVE = "MANAGEMENT_EXECUTIVE"    # Engineering Manager, Director, VP, CTO
+    OTHER_NON_TECH = "OTHER_NON_TECH"                # Legal, Accounting, Admin, Operations
+
+
+class RoleRelevance(str, Enum):
+    """Candidate profile alignment level (Orthogonal to Match Score)."""
+    TARGET = "TARGET"        # Core match (e.g. ML/AI for ML profile)
+    ADJACENT = "ADJACENT"    # Related technical role; requires JD ML evidence for Ready-to-Apply
+    IRRELEVANT = "IRRELEVANT"# Strictly non-target / non-engineering; fail-closed from Ready-to-Apply
+    UNKNOWN = "UNKNOWN"      # Insufficient evidence; fail-closed for Ready-to-Apply
+
+
 class Salary(BaseModel):
     """Compensation details for a job posting."""
 
@@ -150,8 +172,16 @@ class Job(BaseModel):
     is_closed: bool = False
     availability: str = "OPEN"  # OPEN | CLOSED | UNKNOWN
 
+    # ── Role Relevance & Taxonomic Intelligence (Orthogonal to Match Score) ──
+    role_family: Optional[RoleFamily] = None
+    role_relevance: RoleRelevance = RoleRelevance.UNKNOWN
+    role_relevance_confidence: float = 0.0
+    role_relevance_reasons: list[str] = Field(default_factory=list)
+    evidence_keywords: list[str] = Field(default_factory=list)
+    adjacent_ml_evidence_score: float = 0.0
+
     # ── Intelligence & Eligibility (populated by pipeline stages) ───────────
-    fit_score: Optional[float] = None        # 0.0–1.0, set by RankerStage (unmodified by age)
+    fit_score: Optional[float] = None        # 0.0–1.0, set by RankerStage (unmodified by age/relevance)
     embedding_id: Optional[str] = None       # FK to job_embeddings, set by EmbeddingGeneratorStage
     eligibility_status: str = "ELIGIBLE"     # ELIGIBLE | SENIORITY_MISMATCH | ROLE_MISMATCH | LOCATION_MISMATCH
     eligibility_reasons: list[str] = Field(default_factory=list)
