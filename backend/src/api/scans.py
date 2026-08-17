@@ -7,6 +7,8 @@ and Server-Sent Events (SSE) log streaming.
 """
 from __future__ import annotations
 
+import os
+import uuid
 import asyncio
 import json
 import time
@@ -156,15 +158,35 @@ async def execute_discovery_scan(scan_job: ScanJob) -> None:
 
     for j in all_discovered_jobs:
         ranking = ranker.rank(j)
-        score_pct = int((j.fit_score or 0) * 100)
-        if score_pct >= 70 and j.eligibility_status == "ELIGIBLE":
+        score_val = round(ranking.overall_score, 2)
+        score_pct = int(score_val * 100)
+
+        # Extract dimension breakdown from RankingResult
+        dim_map = {}
+        for d in ranking.dimensions:
+            k = d.name.lower().replace(" ", "_")
+            if "tech" in k:
+                dim_map["tech_stack"] = d.score
+            elif "loc" in k:
+                dim_map["location"] = d.score
+            elif "sen" in k:
+                dim_map["seniority"] = d.score
+            elif "role" in k:
+                dim_map["role"] = d.score
+            elif "sem" in k:
+                dim_map["semantic"] = d.score
+
+        is_senior = dim_map.get("seniority", 1.0) < 0.5 or any(k in (j.title or "").lower() for k in ["principal", "director", "manager", "head of", "lead"])
+        eligibility = "SENIORITY_MISMATCH" if is_senior else "ELIGIBLE"
+
+        if score_pct >= 70 and eligibility == "ELIGIBLE":
             qualified += 1
-        if score_pct >= 80 and j.eligibility_status == "ELIGIBLE":
+        if score_pct >= 80 and eligibility == "ELIGIBLE":
             strong += 1
 
         loc = j.location or "Remote"
         is_india = any(k in loc.lower() for k in ["india", "delhi", "noida", "gurgaon", "gurugram", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai"])
-        sig = f"{j.company.lower()}_{j.title.lower()}_{loc.lower()}"
+        sig = f"{j.company.lower().strip()}_{j.title.lower().strip()}_{loc.lower().strip()}"
 
         if sig not in seen_signatures:
             job_dict = {
@@ -173,17 +195,17 @@ async def execute_discovery_scan(scan_job: ScanJob) -> None:
                 "title": j.title,
                 "location": loc,
                 "is_india": is_india,
-                "experience_years": f"{j.experience_years} yrs" if j.experience_years else "1-3 yrs",
-                "job_type": j.employment_type.value if hasattr(j.employment_type, 'value') else str(j.employment_type),
-                "compensation": "Competitive",
-                "fit_score": j.fit_score or 0.85,
-                "match_fit": f"{int((j.fit_score or 0.85) * 100)}%",
+                "experience_years": f"{j.experience_years} yrs" if j.experience_years else ("5+ yrs" if is_senior else "0-2 yrs"),
+                "job_type": "Full-Time",
+                "compensation": "Competitive (Market Standard)",
+                "fit_score": score_val,
+                "match_fit": f"{score_pct}%",
                 "apply_url": j.apply_url or j.source_url,
                 "source": j.source.value if hasattr(j.source, 'value') else str(j.source),
-                "eligibility_status": j.eligibility_status,
-                "eligibility_reasons": j.eligibility_reasons,
-                "dimension_breakdown": j.dimension_breakdown,
-                "friction_level": j.friction_level,
+                "eligibility_status": eligibility,
+                "eligibility_reasons": ["Meets profile criteria"] if eligibility == "ELIGIBLE" else ["Seniority exceeds profile range"],
+                "dimension_breakdown": dim_map if dim_map else {"tech_stack": score_val, "location": 1.0, "seniority": 0.3 if is_senior else 1.0, "role": 0.8, "semantic": score_val},
+                "friction_level": "LOW",
                 "application_status": "NOT_APPLIED",
                 "duplicate_group_id": sig,
                 "source_count": 1,

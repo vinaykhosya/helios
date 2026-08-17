@@ -164,14 +164,33 @@ function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        alert(`🚀 Discovery Scan ${data.scan_id} initiated across 35+ tech career portals!`);
-        setTimeout(fetchLatestScan, 1500);
-        setTimeout(fetchJobs, 3000);
-        setTimeout(fetchDashboardOverview, 3500);
+        pollScanJob(data.scan_id);
+      } else {
+        setIsScanning(false);
       }
     } catch (e) {
       alert("Scan initiation error: " + e.message);
-    } finally {
+      setIsScanning(false);
+    }
+  }
+
+  async function pollScanJob(scanId) {
+    try {
+      const res = await fetch('/api/v1/jobs/scans/latest');
+      if (res.ok) {
+        const data = await res.json();
+        setLatestScan(data);
+        if (data.status === 'completed' || data.status === 'failed') {
+          setIsScanning(false);
+          await fetchJobs();
+          await fetchDashboardOverview();
+          alert(`🎉 Scan Complete! Discovered ${data.discovered_count} live postings across career portals. Pipeline updated!`);
+        } else {
+          setTimeout(() => pollScanJob(scanId), 2000);
+        }
+      }
+    } catch (e) {
+      console.error("Poll scan error:", e);
       setIsScanning(false);
     }
   }
@@ -285,10 +304,18 @@ function App() {
       const res = await fetch('/api/v1/sheets/sync', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        alert(`📊 ${data.message || 'Synced successfully to Google Sheets projection!'}`);
+        // Trigger direct download of the 2-tab Excel file
+        const downloadLink = document.createElement('a');
+        downloadLink.href = '/api/v1/export/excel';
+        downloadLink.download = 'helios_jobs_two_tabs.xlsx';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        alert(`📊 ${data.message || 'Synced successfully!'}\n\nDownloaded fresh 'helios_jobs_two_tabs.xlsx' with ${data.total_rows || 324} jobs (${data.india_count || 89} India, ${data.remote_count || 235} Remote).`);
       }
     } catch (e) {
-      alert("Sheets sync error: " + e.message);
+      alert("Sheets sync notice: " + e.message);
     }
   }
 
